@@ -1,0 +1,21 @@
+{
+  "name": "harkara",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test engine/*.test.ts",
+    "battle": "node engine/run.ts",
+    "dev": "vite client",
+    "build": "vite build client --target esnext --base ./"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  }
+}
