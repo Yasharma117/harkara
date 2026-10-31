@@ -9,7 +9,8 @@
     "dev": "vite client",
     "build": "vite build client --target esnext --base ./",
     "check": "node --env-file-if-exists=.env engine/check.ts",
-    "daily": "node --env-file-if-exists=.env engine/run.ts --models"
+    "daily": "node --env-file-if-exists=.env engine/run.ts --models",
+    "assets": "node tools/assets.ts"
   },
   "keywords": [],
   "author": "",
@@ -17,7 +18,12 @@
   "type": "module",
   "devDependencies": {
     "@types/node": "^26.6.6",
+    "@types/three": "^0.187.0",
+    "sharp": "^0.35.5",
     "typescript": "^7.0.2",
     "vite": "^8.3.5"
+  },
+  "dependencies": {
+    "three": "^0.187.0"
   }
 }
