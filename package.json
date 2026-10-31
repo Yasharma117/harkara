@@ -7,7 +7,9 @@
     "test": "node --test engine/*.test.ts",
     "battle": "node engine/run.ts",
     "dev": "vite client",
-    "build": "vite build client --target esnext --base ./"
+    "build": "vite build client --target esnext --base ./",
+    "check": "node --env-file-if-exists=.env engine/check.ts",
+    "daily": "node --env-file-if-exists=.env engine/run.ts --models"
   },
   "keywords": [],
   "author": "",

@@ -16,6 +16,7 @@ export interface Decision {
   letter?: { to: HouseId; text: string; method: Method }
   decoy?: { to: string; verb: Verb; where: string }
   smoke?: Smoke
+  meta?: { model: string; tokens: number; retries: number; error?: string }
 }
 export interface Sighting { id: string; house: HouseId; type: UnitType; name: string; place: string; x: number; y: number; strength: number; tick: number }
 export interface Intel { letter: string; from: HouseId; text: string; readable: boolean }
@@ -140,6 +141,8 @@ export async function runBattle(o: { id: string; seed: number; generals: Record<
 
   function apply(h: HouseId, d: Decision) {
     const c = node(camp(h)), from = { x: c.x, y: c.y, node: c.id }
+    if (d.meta) emit('model', { house: h, ...d.meta })
+    if (d.meta?.error) emit('orders_lost', { house: h, why: d.meta.error })
     if (d.thought) emit('thought', { house: h, text: String(d.thought).slice(0, 280) })
     const mine = (id: string) => sq(id)?.house === h // dead squads included: the general doesn't know
     for (const ord of (d.orders ?? []).slice(0, 3)) {
@@ -330,7 +333,8 @@ export async function runBattle(o: { id: string; seed: number; generals: Record<
   const end = { winner, reason, fords: holders, scores, letters: [...new Map(letters.map(l => [l.id, l])).values()] }
   const stats = {
     interceptions: count('caught') + count('killed'), caught: count('caught'), killed: count('killed'), lost: count('lost'), delivered: count('delivered'),
-    readableDecodes, clashes: count('clash'), routs: count('rout'), beliefError, invalidOrders: count('invalid'),
+    readableDecodes, calls: all.filter(e => e.type === 'model').length, retries: all.filter(e => e.type === 'model' && e.retries).length,
+    tokens: all.filter(e => e.type === 'model').reduce((a, e) => a + e.tokens, 0), ordersLost: count('orders_lost'), citesReports: (() => { const th = all.filter(e => e.type === 'thought'); return th.length ? Math.round((100 * th.filter(e => /\d+\s*(w\b|watch)|report|last seen|old/i.test(e.text)).length) / th.length) : 0 })(), clashes: count('clash'), routs: count('rout'), beliefError, invalidOrders: count('invalid'),
   }
   const manifest = { id: o.id, seed: o.seed, houses: init.houses, winner, reason, watches: watches.length, files: ['init.json', ...watches.map(w => `watch${w.watch}.json`), 'end.json', 'stats.json'] }
   return { manifest, init, watches, end, stats }
