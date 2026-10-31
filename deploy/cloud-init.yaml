@@ -1,0 +1,61 @@
+#cloud-config
+# Paste this whole file into "Show advanced options → Management → cloud-init script" when creating the A1 instance.
+# Then, once it's up, open the browser terminal (Cloud Shell or the instance console) and run:  harkara-setup
+package_update: true
+packages: [git, curl, ca-certificates]
+runcmd:
+  - curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
+  - apt-get install -y nodejs
+  - systemctl daemon-reload
+write_files:
+  - path: /usr/local/bin/harkara-setup
+    permissions: '0755'
+    content: |
+      #!/usr/bin/env bash
+      # Asks for the GitHub token and model keys, clones the repo, checks every model, arms the nightly timer.
+      # Keys go into ~/harkara/.env (mode 600) and nowhere else.
+      set -euo pipefail
+      [ "$(id -un)" = ubuntu ] || { echo "run as the ubuntu user"; exit 1; }
+      cd ~
+      read -rsp "GitHub fine-grained token (repo Yasharma117/harkara, Contents: read and write): " GH; echo
+      umask 077
+      printf 'https://x-access-token:%s@github.com\n' "$GH" > ~/.git-credentials
+      git config --global credential.helper store
+      git config --global user.name harkara-runner
+      git config --global user.email runner@harkara.invalid
+      [ -d harkara ] || git clone -q https://github.com/Yasharma117/harkara.git
+      cd harkara
+      : > .env
+      for k in GROQ_API_KEY NVIDIA_API_KEY OPENROUTER_API_KEY; do
+        read -rsp "$k (Enter to skip): " v; echo
+        [ -n "$v" ] && echo "$k=$v" >> .env
+      done
+      umask 022
+      echo; echo "Checking every model in engine/providers.json:"
+      node --env-file=.env engine/check.ts || true
+      sudo systemctl enable --now harkara-battle.timer
+      echo; echo "Done. First battle runs tonight at 02:00 IST. Run one now with: ~/harkara/deploy/nightly.sh"
+  - path: /etc/systemd/system/harkara-battle.service
+    content: |
+      [Unit]
+      Description=Harkara nightly battle
+      After=network-online.target
+      Wants=network-online.target
+      StartLimitIntervalSec=1d
+      StartLimitBurst=12
+      [Service]
+      Type=oneshot
+      User=ubuntu
+      ExecStart=/home/ubuntu/harkara/deploy/nightly.sh
+      Restart=on-failure
+      RestartSec=30min
+      TimeoutStartSec=8h
+  - path: /etc/systemd/system/harkara-battle.timer
+    content: |
+      [Unit]
+      Description=Harkara nightly battle, 02:00 IST
+      [Timer]
+      OnCalendar=*-*-* 20:30:00 UTC
+      Persistent=true
+      [Install]
+      WantedBy=timers.target
