@@ -19,7 +19,8 @@
   aside { grid-row: 2 / 4; grid-column: 2; border-left: 1px solid var(--line); overflow-y: auto; padding: 8px 12px; }
   .house { display: flex; gap: 8px; align-items: baseline; margin: 2px 0; }
   .sw { width: 10px; height: 10px; border-radius: 2px; flex: none; }
-  .item { border-left: 3px solid var(--c, #999); padding: 4px 8px; margin: 6px 0; background: #fff8ec; border-radius: 0 6px 6px 0; }
+  .item { padding: 4px 8px 4px 22px; margin: 6px 0; background: #fff8ec; border-radius: 6px; position: relative; }
+  .item::before { content: ''; position: absolute; left: 8px; top: 10px; width: 8px; height: 8px; border-radius: 50%; background: var(--c, #999); }
   .item small { color: var(--muted); }
   .item.big { background: #fff; box-shadow: 0 0 0 1px var(--line); }
   .mono { font-family: ui-monospace, Menlo, monospace; letter-spacing: .04em; }
