@@ -47,7 +47,6 @@ export const EDGES: MapEdge[] = [
   E('orchid-camp', 'south-ridge', 'hill'), E('south-ridge', 'tiger-camp', 'hill'),
   E('rhino-camp', 'west-hill', 'hill'), E('west-hill', 'n-west', 'hill'), E('kite-camp', 'gorge', 'hill'), E('gorge', 'n-east', 'hill'),
   E('orchid-camp', 'sw-hill', 'hill'), E('sw-hill', 's-west', 'hill'), E('tiger-camp', 'se-hill', 'hill'), E('se-hill', 's-east', 'hill'),
-  E('west-hill', 'sw-hill', 'hill'), E('gorge', 'se-hill', 'hill'), // hill paths that skirt the river high up, misty
 ]
 
 export const SPEED: Record<EdgeKind, number> = { road: 1, hill: 0.6, ford: 0.5, ferry: 0.35 }

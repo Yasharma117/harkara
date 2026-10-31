@@ -10,7 +10,8 @@
     "build": "vite build client --target esnext --base ./",
     "check": "node --env-file-if-exists=.env engine/check.ts",
     "daily": "node --env-file-if-exists=.env engine/run.ts --models",
-    "assets": "node tools/assets.ts"
+    "assets": "node tools/assets.ts",
+    "mask": "node tools/mask.ts"
   },
   "keywords": [],
   "author": "",

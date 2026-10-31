@@ -35,13 +35,14 @@
 <header>
   <h1>HARKARA</h1>
   <select id="battle" aria-label="Battle"></select>
+  <span role="group" aria-label="View" id="views"></span>
   <button id="play" aria-pressed="false">Pause</button>
   <span role="group" aria-label="Speed" id="speeds"></span>
   <span id="clock">Watch 1/30</span>
   <span>Belief view:</span><span role="group" aria-label="Belief view" id="beliefs"></span>
   <span id="belief-err"></span>
 </header>
-<main><canvas id="c"></canvas></main>
+<main id="stage"><canvas id="c"></canvas></main>
 <aside><div id="houses"></div><div id="feed" aria-live="off"></div></aside>
 <footer>
   <div id="marks"></div>

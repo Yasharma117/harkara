@@ -59,6 +59,7 @@ export function scripted(h: HouseId): General {
       // (re)send standing orders to squads not where they should be
       for (const s of v.own) {
         const w = want(s.id), sent = lastSent.get(s.id)
+        if (age(s) > 6) continue // silent for six watches: presumed lost
         if (dist(s, node(w)) > 60 && (sent === undefined || v.watch - sent >= 5)) {
           order(s.id, s.type === 'cav' ? 'screen' : 'hold', w)
           if (sent !== undefined) notes.push(`No word that ${s.name} reached ${node(w).name}; last seen ${s.place}, ${age(s)} watches ago. Resending.`)

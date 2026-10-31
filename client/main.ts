@@ -32,6 +32,15 @@ const group = (el: string, opts: [string, string | number | null][], pick: (v: a
     $(el).append(b)
   }
 }
+let dio: Awaited<ReturnType<typeof import('./diorama.ts').createDiorama>> | null = null, view: 'map' | 'diorama' = 'map'
+group('views', [['Map', 'map'], ['Diorama', 'diorama']], async v => {
+  if (v === 'diorama' && !dio) dio = await (await import('./diorama.ts')).createDiorama($('stage'), init)
+  view = v
+  cv.style.display = v === 'map' ? '' : 'none'
+  if (dio) dio.canvas.style.display = v === 'diorama' ? '' : 'none'
+  if (v === 'map') resize()
+}, view)
+if (params.get('view') === 'diorama') ($('views').lastElementChild as HTMLButtonElement).click()
 group('speeds', [['2×', 2], ['8×', 8], ['32×', 32]], v => (speed = v), speed)
 group('beliefs', [['Truth', null], ...HOUSES.map(h => [h[0].toUpperCase() + h.slice(1), h] as [string, string])], v => (beliefOf = v), null)
 const scrub = $('scrub') as HTMLInputElement
@@ -71,6 +80,7 @@ let S = 1, OX = 0, OY = 0
 const bg = document.createElement('canvas')
 function resize() {
   const r = cv.getBoundingClientRect(), dpr = devicePixelRatio
+  if (!r.width) return
   cv.width = bg.width = r.width * dpr; cv.height = bg.height = r.height * dpr
   S = (Math.min(r.width, r.height) / 1040) * dpr; OX = (cv.width - 1000 * S) / 2; OY = (cv.height - 1000 * S) / 2
   drawMap(bg.getContext('2d')!)
@@ -123,6 +133,27 @@ function draw() {
   ctx.drawImage(bg, 0, 0)
   const { a, b, k } = frameAt(t)
   const pos = squadInfo.map((_, i) => ({ x: lerp(a.s[i * 4], b.s[i * 4], k), y: lerp(a.s[i * 4 + 1], b.s[i * 4 + 1], k), str: a.s[i * 4 + 2], flags: a.s[i * 4 + 3] }))
+  if (view === 'diorama' && dio) {
+    const cbm = new Map(b.c.map(c => [c[0], c]))
+    const flashes = []
+    for (let i = events.length - 1; i >= 0 && events[i].t > t - 40; i--) { const e = events[i]; if (e.t <= t && ['caught', 'killed', 'lost', 'clash'].includes(e.type)) flashes.push({ type: e.type, x: e.x, y: e.y, age: (t - e.t) / 40 }) }
+    dio.render({
+      t,
+      squads: squadInfo.map((s, i) => ({ ...s, ...pos[i] })),
+      couriers: a.c.map(([cid, x0, y0]) => {
+        const ev = couriers.get(cid)!, nb = cbm.get(cid), x = nb ? lerp(x0, nb[1], k) : x0, y = nb ? lerp(y0, nb[2], k) : y0
+        const ps = ev.path.map((n: string) => nodes.get(n)), segD = (j: number) => { // distance from rider to segment j→j+1
+          const p = ps[j], q = ps[j + 1], L = Math.hypot(q.x - p.x, q.y - p.y) || 1, u = Math.max(0, Math.min(1, ((x - p.x) * (q.x - p.x) + (y - p.y) * (q.y - p.y)) / L ** 2))
+          return Math.hypot(p.x + u * (q.x - p.x) - x, p.y + u * (q.y - p.y) - y)
+        }
+        let j = 0
+        for (let i = 1; i < ps.length - 1; i++) if (segD(i) < segD(j)) j = i
+        return { id: cid, house: ev.house, kind: ev.kind, x, y, path: ps.slice(j + 1) }
+      }),
+      flashes,
+    }, performance.now() / 1000)
+    return
+  }
   // courier routes + riders
   const cb = new Map(b.c.map(c => [c[0], c]))
   for (const [cid, x0, y0] of a.c) {
@@ -208,6 +239,7 @@ function feed() {
 // ---- loop
 let last = performance.now()
 function loop(now: number) {
+  requestAnimationFrame(loop) // first, so one bad frame can't stop playback
   const loaded = watches.length * TPW - 1
   if (playing) t = Math.min(t + ((now - last) / 1000) * 10 * speed, loaded)
   last = now
@@ -215,7 +247,6 @@ function loop(now: number) {
   scrub.value = String(Math.floor(t))
   $('clock').textContent = `Watch ${Math.min(manifest.watches, Math.floor(t / TPW) + 1)}/${manifest.watches}`
   draw(); feed()
-  requestAnimationFrame(loop)
 }
 addEventListener('resize', resize)
 resize()
