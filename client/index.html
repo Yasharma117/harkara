@@ -7,10 +7,10 @@
 <style>
   :root { --paper: #f2e9d8; --ink: #1e1c1a; --muted: #6b6459; --line: #d9cdb5; }
   * { box-sizing: border-box; }
-  body { margin: 0; height: 100vh; display: grid; grid-template: auto 1fr auto / 1fr 380px; background: var(--paper); color: var(--ink); font: 13px/1.4 ui-sans-serif, system-ui, sans-serif; }
+  body { margin: 0; height: 100vh; display: grid; grid-template: auto 1fr auto / 1fr 380px; background: var(--paper); color: var(--ink); font: 13px/1.45 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif; }
   header { grid-column: 1 / -1; display: flex; gap: 12px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-  header h1 { font-size: 15px; margin: 0 8px 0 0; letter-spacing: .08em; }
-  button, select { font: inherit; background: #fff8ec; border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; color: var(--ink); }
+  header h1 { font-size: 1.3em; margin: 0 8px 0 0; letter-spacing: .14em; font-weight: 600; }
+  button, select { font: inherit; background: transparent; border: 1px solid #b9a988; border-radius: 3px; padding: 4px 10px; cursor: pointer; color: var(--ink); }
   button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
   #clock { font-variant-numeric: tabular-nums; min-width: 110px; font-weight: 600; }
   #belief-err { position: absolute; top: 12px; left: 12px; z-index: 2; background: #fff8ecd9; border-radius: 6px; padding: 4px 10px; color: var(--ink); pointer-events: none; }
@@ -26,25 +26,25 @@
   .seal { float: right; width: 30px; margin: 0 0 4px 6px; }
   body { background-size: 512px; }
   .sw { width: 10px; height: 10px; border-radius: 2px; flex: none; }
-  .item { padding: 4px 8px 4px 22px; margin: 6px 0; background: #fff8ec; border-radius: 6px; position: relative; }
-  .item::before { content: ''; position: absolute; left: 8px; top: 10px; width: 8px; height: 8px; border-radius: 50%; background: var(--c, #999); }
+  .item { padding: 6px 4px 7px 20px; margin: 0; border-bottom: 1px solid #d9cdb5; position: relative; }
+  .item::before { content: ''; position: absolute; left: 6px; top: 12px; width: 8px; height: 8px; border-radius: 50%; background: var(--c, #999); }
   .item small { color: var(--muted); }
-  .item.big { background: #fff; box-shadow: 0 0 0 1px var(--line); }
+  .item.big { background: #f8f0dfcc; }
   .mono { font-family: ui-monospace, Menlo, monospace; letter-spacing: .04em; }
   footer { position: relative; padding: 10px 14px 14px; border-top: 1px solid var(--line); }
   .row { display: flex; gap: 8px; align-items: center; }
   .track { flex: 1; }
-  #prev, #next { font-size: 16px; line-height: 1; padding: 4px 9px; }
+  #prev, #next { font-size: 1.3em; line-height: 1; padding: 4px 9px; }
   #scrub { width: 100%; }
   #tabs { margin: 8px 0 4px; display: flex; gap: 6px; }
   .card { cursor: pointer; }
   #predict button { margin: 4px 4px 0 0; }
-  .card button { margin-top: 6px; font-size: 12px; padding: 2px 8px; }
+  .card button { margin-top: 6px; font-size: .8em; padding: 2px 8px; }
   .card[aria-current="true"] { box-shadow: 0 0 0 2px var(--ink); }
-  .fate { font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: .06em; }
+  .fate { font-weight: 600; text-transform: uppercase; font-size: .8em; letter-spacing: .06em; }
   #marks { position: relative; height: 10px; margin: 0 7px; }
   #marks i { position: absolute; top: 0; width: 3px; height: 10px; border-radius: 1px; cursor: pointer; }
-  .legend { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .legend { color: var(--muted); font-size: .8em; margin-top: 4px; }
 </style>
 </head>
 <body>

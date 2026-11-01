@@ -1,7 +1,7 @@
 // Cycle 0 grey-box viewer: flat shapes on a 2D canvas. three.js arrives with the art in cycle 2.
 import type { Ev, WatchFile } from '../engine/sim.ts'
 
-const COLOR: Record<string, string> = { rhino: '#34418f', kite: '#d2452b', orchid: '#8a4fb5', tiger: '#c98a1c' }
+const COLOR: Record<string, string> = { rhino: '#34418f', kite: '#d2452b', orchid: '#b13f9a', tiger: '#e0900a' }
 const HOUSES = ['rhino', 'kite', 'orchid', 'tiger']
 const $ = (id: string) => document.getElementById(id)!
 const params = new URLSearchParams(location.search)
@@ -187,7 +187,7 @@ function draw() {
       flashes,
       smokes: events.filter(e => e.type === 'smoke' && e.t <= t && t - e.t < 300).map(e => ({ ...nodes.get(`${e.house}-camp`), age: (t - e.t) / 300 })),
       ghosts,
-      shot: director(t),
+      shot: director(t, pos),
     }, performance.now() / 1000)
     return
   }
@@ -244,20 +244,23 @@ function draw() {
 // ---- camera director: look ahead ~9 game seconds, pick the best moment, hold it until just after it happens
 const SCORE: Record<string, number> = { standard: 10, killed: 8, caught: 8, decode: 6, truce: 5, clash: 3 }
 let shot: { x: number; y: number; from: number; until: number } | null = null
-function director(tt: number) {
+function director(tt: number, pos: { x: number; y: number; flags: number }[]) {
   if (shot && tt >= shot.from && tt < shot.until) return shot
   let best: { x: number; y: number; s: number; t: number } | null = null
   for (const e of events) {
     if (e.t <= tt) continue
-    if (e.t > tt + 90) break
+    if (e.t > tt + 240) break
     let sc = SCORE[e.type]
     if (!sc || (e.type === 'decode' && !e.readable)) continue
     if ((e.type === 'caught' || e.type === 'killed') && letters.get(e.letter)?.kind === 'report') sc = 4
     const at = e.x != null ? e : nodes.get(`${e.type === 'truce' ? e.a : e.house}-camp`)
     if (at && (!best || sc > best.s)) best = { x: at.x, y: at.y, s: sc, t: e.t }
   }
-  shot = best ? { x: best.x, y: best.y, from: tt, until: best.t + 40 } : null
-  return shot
+  if (best) return (shot = { x: best.x, y: best.y, from: tt, until: best.t + 40 })
+  // nothing big coming: hold on the place with the most soldiers (usually a ford) rather than the wide shot
+  let crowd = { x: 500, y: 500, n: 0 }
+  for (const n of nodes.values()) { const k = pos.filter(p => !(p.flags & 2) && Math.hypot(p.x - n.x, p.y - n.y) < 130).length; if (k > crowd.n) crowd = { x: n.x, y: n.y, n: k } }
+  return (shot = crowd.n ? { x: crowd.x, y: crowd.y, from: tt, until: tt + 150 } : null)
 }
 
 // ---- feed
@@ -287,7 +290,14 @@ function feed() {
   if (n === shown) return
   shown = n
   const out: string[] = []
-  for (let i = n - 1; i >= 0 && out.length < 80; i--) { const l = line(events[i]); if (l) out.push(l) }
+  let prev = '', first = '', rep = 1
+  for (let i = n - 1; i >= 0 && out.length < 80; i--) {
+    const l = line(events[i])
+    if (!l) continue
+    const key = l.replace(/<small>w\d+<\/small>/, '') // the same line in another watch still counts as a repeat
+    if (key === prev) { rep++; out[out.length - 1] = first.replace(/<\/div>$/, ` <small>×${rep}</small></div>`); continue }
+    prev = key; first = l; rep = 1; out.push(l)
+  }
   if (tab === 'feed') $('feed').innerHTML = out.join('')
   else mailbag()
   predict()
