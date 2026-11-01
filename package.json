@@ -1,10 +1,12 @@
 {
   "name": "harkara",
   "version": "1.0.0",
-  "description": "",
+  "description": "Harkara: a daily AI war broadcast where every order is carried by a courier who can be caught.",
   "main": "index.js",
   "scripts": {
     "test": "node --test engine/*.test.ts",
+    "ladder": "node --env-file-if-exists=.env engine/ladder.ts",
+    "api": "node --env-file-if-exists=.env server/ladder.ts",
     "battle": "node engine/run.ts",
     "dev": "vite client",
     "build": "vite build client --target esnext --base ./",
@@ -20,11 +22,15 @@
   "devDependencies": {
     "@types/node": "^26.6.6",
     "@types/three": "^0.187.0",
+    "kokoro-js": "^1.2.1",
     "sharp": "^0.35.5",
     "typescript": "^7.0.2",
     "vite": "^8.3.5"
   },
   "dependencies": {
     "three": "^0.187.0"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

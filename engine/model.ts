@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs'
 import { EDGES, HOUSES, NODES, type HouseId } from './map.ts'
 import { SMOKES, TICKS, VERBS, type Decision, type General, type GeneralView } from './sim.ts'
+import { fence } from './doctrine.ts'
 
 export interface Provider { base: string; key: string; rpm: number; tpm: number; json: boolean }
 export interface Link { provider: string; model: string }
@@ -49,7 +50,7 @@ COURIERS: every order is carried by a rider who can be caught by enemy foot or h
 - letter: to another house's general, carried by a rider like any other. A letter containing the word TRUCE makes a six-watch truce when it arrives.
 UNITS: inf holds fords and catches nearby riders; arch shoots riders and hurts foot; cav is fast, hunts riders, beats archers; ele is slow, breaks foot and horse.
 VERBS: ${VERBS.join(', ')} (all mean: go to "where" and act there).
-YOUR STANDING DOCTRINE: ${doctrine || 'hold'}
+YOUR STANDING DOCTRINE: ${fence(doctrine === 'hold' ? '' : doctrine)}
 PLACES (id = name → neighbours):
 ${PLACES}
 ANSWER with one JSON object and nothing else:
@@ -140,9 +141,9 @@ export function modelGeneral(h: HouseId, cfg: Config = loadConfig(), env: Record
 
   return {
     get model() { return chain.map(c => c.model).join(' → ') },
-    async persona() {
+    async persona(_h, doctrine = '') {
       try {
-        const r = await chat([{ role: 'system', content: rules(h, '') }, { role: 'user', content: 'Before battle: answer only {"name": "<a title for yourself, max 4 words>", "line": "<one line to your army, max 120 chars>"}' }])
+        const r = await chat([{ role: 'system', content: rules(h, doctrine) }, { role: 'user', content: 'Before battle: answer only {"name": "<a title for yourself, max 4 words>", "line": "<one line to your army, max 120 chars>"}' }])
         const j = JSON.parse(r.text.slice(r.text.indexOf('{'), r.text.lastIndexOf('}') + 1))
         return { name: clean(j.name, 40), line: clean(j.line, 140) }
       } catch (e) {

@@ -1,5 +1,7 @@
 // Cycle 0 grey-box viewer: flat shapes on a 2D canvas. three.js arrives with the art in cycle 2.
 import type { Ev, WatchFile } from '../engine/sim.ts'
+import { ladder } from './ladder.ts'
+import { voice } from './voice.ts'
 
 const COLOR: Record<string, string> = { rhino: '#34418f', kite: '#b3242f', orchid: '#b13f9a', tiger: '#e3a812' }
 const HOUSES = ['rhino', 'kite', 'orchid', 'tiger']
@@ -24,7 +26,12 @@ let t = Number(hashT ?? params.get('t') ?? 0), playing = !hashT, speed = 8, beli
 for (const b of index) $('battle').append(new Option(b.id, b.id, false, b.id === id)) // no winner here: it would spoil Predict
 $('battle').onchange = e => { location.hash = (e.target as HTMLSelectElement).value; location.reload() }
 const playBtn = $('play')
-const setPlaying = (p: boolean) => { playing = p; playBtn.textContent = p ? 'Pause' : 'Play' }
+let vo: Awaited<ReturnType<typeof voice>> | null = null, opened = false
+const setPlaying = (p: boolean) => {
+  if (vo?.busy) return // the opening scene starts the battle when it ends
+  if (p && vo && !opened && t < 30) { opened = true; playBtn.textContent = 'Pause'; vo.opening().then(() => setPlaying(true)); return } // the opening scene runs once, before the first watch
+  playing = p; playBtn.textContent = p ? 'Pause' : 'Play'
+}
 setPlaying(playing)
 playBtn.onclick = () => setPlaying(!playing)
 const group = (el: string, opts: [string, string | number | null][], pick: (v: any) => void, init: any) => {
@@ -72,6 +79,11 @@ const art: Record<string, unknown> = await fetch('art/art.json').then(r => (r.ok
 const A = (n: string) => (art[n] ? `art/${n}.webp` : '')
 if (A('paper-grain')) document.body.style.backgroundImage = `linear-gradient(#f2e9d8b3, #f2e9d8b3), url(${A('paper-grain')})` // softened: the grain, not the tile
 const emblem = (h: string) => A(`emblem-${h}`) ? `<span class="emb" style="--c:${COLOR[h]};--m:url(${A(`emblem-${h}`)})"></span>` : `<span class="sw" style="background:${COLOR[h]}"></span>`
+const lad = ladder(COLOR, Object.fromEntries(init.houses.map((h: any) => [h.id, h.name])), h => A(`portrait-${h}`) ?? '')
+$('ladder-open').onclick = () => lad.open()
+vo = await voice(id, init.houses, COLOR, h => A(`portrait-${h}`), $('stage'))
+$('ladder-open').before(vo.button)
+if (params.get('ladder') !== null || location.hash === '#ladder') lad.open()
 $('houses').innerHTML = init.houses.map((h: any) => `<div class="house">${A(`portrait-${h.id}`) ? `<img class="portrait" src="${A(`portrait-${h.id}`)}" alt="">` : ''}<div><div class="hname">${emblem(h.id)}<b>${h.name}</b><small>${h.id} · ${h.model}</small></div><i>“${h.line}”</i></div></div>`).join('')
 
 // ---- streaming load: playback starts after watch 1
@@ -268,6 +280,13 @@ function director(tt: number, pos: { x: number; y: number; flags: number }[]) {
     if (at && context(at, pos) && (!best || sc > best.s)) best = { x: at.x, y: at.y, s: sc, t: e.t }
   }
   if (best) return (shot = { x: best.x, y: best.y, from: tt, until: best.t + 40 })
+  // nothing big coming: go back to where the latest action was (its ring may still be showing), if it was recent
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i]
+    if (e.t > tt) continue
+    if (e.t < tt - 300) break
+    if (SCORE[e.type] >= 3 && e.x != null && context(e as any, pos)) return (shot = { x: e.x, y: e.y, from: tt, until: tt + 150 })
+  }
   // nothing big coming: hold on the place with the most soldiers (usually a ford) rather than the wide shot
   // (two houses meeting count double)
   let crowd = { x: 500, y: 500, n: 0 }
@@ -415,7 +434,7 @@ function loop(now: number) {
   if (playing && t >= TOTAL) setPlaying(false)
   scrub.value = String(Math.floor(t))
   $('clock').textContent = `Watch ${Math.min(manifest.watches, Math.floor(t / TPW) + 1)}/${manifest.watches}`
-  draw(); feed()
+  draw(); feed(); vo?.tick(events, t, playing, speed)
 }
 addEventListener('resize', resize)
 resize()

@@ -22,7 +22,17 @@ Drop the PNGs in `harkara/assets/raw/` (or attach them in chat). I run `npm run 
    `ssh -i <key> ubuntu@<public IP>` and run `harkara-setup`. It asks for the token and keys (hidden input) and pings every model.
    Paste me the output of that check (it never prints keys) and I'll fix any wrong model ids in `engine/providers.json`.
 
+## 4. Launch (cycle 5)
+1. **Oracle ports.** In the Oracle console: Networking → your VCN → Security Lists → Default → Add Ingress Rules: source `0.0.0.0/0`, TCP, destination ports `80,443`. (The box's own firewall is opened by cloud-init.)
+2. Run `harkara-setup` on the box. At the end it prints the ladder API address, e.g. `https://129-154-1-2.sslip.io`. Free HTTPS, no domain needed.
+3. **Vercel.** vercel.com → Add New → Project → import `Yasharma117/harkara`. Settings come from `vercel.json`; leave them. Under Environment Variables add `VITE_LADDER_API` = the address from step 2. Deploy.
+4. Send me the Vercel URL. I set it as the API's allowed origin and run the first ladder night.
+
+## What runs every night on the box (02:00 IST)
+1. The daily battle with the four model generals (Groq / NVIDIA / OpenRouter, local model as fallback).
+2. The Doctrine Ladder: tonight's entries, every house on the local Gemma 4 E4B, so only the doctrines differ.
+3. Every new battle is voiced (one voice per general).
+4. All of it is pushed to `battle/<date>` for review; merge it to publish (Vercel redeploys on merge).
+
 ## Known gaps
-- Model ids marked VERIFY in `providers.json` come from the spec and are unconfirmed.
-- The box is only busy during the nightly battle; Oracle may reclaim idle A1 boxes after 7 days. The local ladder model (cycle 5) is the real fix; until then check the box weekly.
-- Vercel import waits for cycle 5.
+- Voice: the nightly voices each new battle with Kokoro-82M on the CPU (`node tools/voice.ts <battle>` by hand). Listen to a few and tell me if it sounds cheap; the spec says drop it if so.

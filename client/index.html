@@ -47,6 +47,32 @@
   #marks { position: relative; height: 10px; margin: 0 7px; }
   #marks i { position: absolute; top: 0; width: 3px; height: 10px; border-radius: 1px; cursor: pointer; }
   .legend { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .push { margin-left: auto; }
+  #opening { position: absolute; inset: 0; right: var(--panel); display: grid; place-content: center; gap: 22px; background: radial-gradient(ellipse at center, #f2e9d8f2, #e6d8bdf5); z-index: 5; transition: opacity .4s; text-align: center; }
+  #opening.out { opacity: 0; } #opening[hidden] { display: none; }
+  #opening .op-title small { display: block; letter-spacing: .3em; text-transform: uppercase; font-size: 13px; color: var(--muted); } #opening .op-title b { font-size: 2.2em; letter-spacing: .12em; text-transform: uppercase; font-weight: 600; }
+  #opening .op-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 190px)); gap: 16px; }
+  #opening figure { margin: 0; padding: 12px; background: #fffaf099; border-radius: 4px; opacity: .45; transform: scale(.96); transition: opacity .3s, transform .3s; }
+  #opening figure.now { opacity: 1; transform: none; box-shadow: 0 8px 26px #0002; }
+  #opening img { width: 96px; height: 140px; object-fit: cover; border-radius: 4px; } #opening figcaption b { display: block; margin: 6px auto 6px; padding-bottom: 4px; width: fit-content; border-bottom: 1px solid var(--c); } #opening q { font-style: italic; font-size: 13px; line-height: 1.35; }
+  #opening .op-skip { justify-self: center; }
+  @media (max-width: 820px) { #opening .op-cards { grid-template-columns: repeat(2, minmax(0, 170px)); } #opening { right: 0; } }
+  dialog#ladder { width: min(760px, 94vw); max-height: 88vh; border: 0; border-radius: 6px; padding: 22px 26px; background: #f2e9d8 url(art/paper-grain.webp); color: var(--ink); box-shadow: 0 20px 60px #0007; }
+  dialog#ladder::backdrop { background: #1c140c88; backdrop-filter: blur(2px); }
+  #ladder h2 { margin: 0 0 6px; font-size: 1.5em; letter-spacing: .04em; } #ladder h3 { margin: 18px 0 6px; font-size: 1.05em; border-bottom: 1px solid var(--line); padding-bottom: 4px; } #ladder h4 { margin: 10px 0 4px; font-size: 13px; color: var(--muted); }
+  #ladder .lede { margin: 0 0 12px; line-height: 1.45; } #ladder .muted { color: var(--muted); }
+  #ladder .close { position: absolute; right: 14px; top: 12px; } #ladder .close button { border: 0; font-size: 1.2em; }
+  #ladder .houses { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; border: 0; padding: 0; margin: 0 0 10px; }
+  #ladder .houses label { display: flex; gap: 8px; align-items: center; padding: 6px; border: 1px solid var(--line); border-radius: 4px; cursor: pointer; font-size: 13px; line-height: 1.2; }
+  #ladder .houses label:has(input:checked) { border-color: var(--c); box-shadow: inset 0 0 0 2px var(--c); background: #fff6; }
+  #ladder .houses input { position: absolute; opacity: 0; } #ladder .houses img { width: 30px; height: 44px; object-fit: cover; border-radius: 3px; }
+  #ladder .houses label:has(input:focus-visible) { outline: 2px solid var(--ink); }
+  #ladder textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 8px; border: 1px solid #b9a988; border-radius: 3px; background: #fffaf0; resize: vertical; }
+  #ladder .row { display: flex; gap: 10px; align-items: center; margin-top: 8px; } #ladder .row input { flex: 1; font: inherit; padding: 4px 8px; border: 1px solid #b9a988; border-radius: 3px; background: #fffaf0; }
+  #ladder #ld-count { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; } #ladder button[type=submit] { background: var(--ink); color: var(--paper); } #ladder button:disabled { opacity: .5; cursor: default; }
+  #ladder ol { margin: 4px 0 0; padding-left: 22px; } #ladder li { margin: 4px 0; } #ladder li > b::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--c); margin-right: 6px; } #ladder q { font-style: italic; }
+  #ladder .ld-head a { margin-left: 8px; color: var(--ink); }
+  @media (max-width: 620px) { #ladder .houses { grid-template-columns: repeat(2, 1fr); } }
 </style>
 </head>
 <body>
@@ -58,6 +84,7 @@
   <span role="group" aria-label="Speed" id="speeds"></span>
   <span id="clock">Watch 1/30</span>
   <span>Belief view:</span><span role="group" aria-label="Belief view" id="beliefs"></span>
+  <button id="ladder-open" class="push">Doctrine Ladder</button>
 </header>
 <main id="stage"><canvas id="c"></canvas><span id="belief-err"></span></main>
 <aside><div id="houses"></div><div id="predict" class="item"></div><div role="group" aria-label="Panel" id="tabs"></div><div id="feed" aria-live="off"></div><div id="mail" hidden></div></aside>

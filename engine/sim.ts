@@ -30,7 +30,7 @@ export interface GeneralView {
 }
 export interface General {
   model: string
-  persona(h: HouseId): Promise<{ name: string; line: string }>
+  persona(h: HouseId, doctrine?: string): Promise<{ name: string; line: string }>
   decide(v: GeneralView): Promise<Decision>
 }
 export type Ev = { seq: number; t: number; type: string; [k: string]: any }
@@ -203,7 +203,8 @@ export async function runBattle(o: { id: string; seed: number; generals: Record<
         emit('lost', { courier: c.id, letter: c.letter.id, house: c.house, why: misty ? 'lost in the mist' : 'never found its squad', x: Math.round(c.x), y: Math.round(c.y) })
         continue
       }
-      for (const s of squads) {
+      for (let k = 0; k < squads.length; k++) {
+        const s = squads[(k + tick) % squads.length] // the first try at a rider rotates each tick, so no house always catches first
         if (s.dead || s.routed || !enemies(s.house, c.house) || c.letter.to === camp(s.house)) continue // envoys pass their hosts
         const u = UNIT[s.type]
         if (dist(s, c) > u.catchR || rnd() >= u.catchP) continue
@@ -215,6 +216,7 @@ export async function runBattle(o: { id: string; seed: number; generals: Record<
       }
     }
     const now = new Set<string>()
+    const hits: [Squad, number][] = [] // all blows of a tick land together, from strengths at the start of the tick: list order must not matter
     for (const s of squads) {
       s.engaged = false
       if (s.dead || s.routed) continue
@@ -226,8 +228,9 @@ export async function runBattle(o: { id: string; seed: number; generals: Record<
       now.add(k)
       if (!engaged.has(k)) emit('clash', { a: s.id, b: foe.id, x: Math.round(foe.x), y: Math.round(foe.y) })
       const atFord = FORDS.some(f => dist(node(f), foe!) < 40)
-      foe.strength -= 0.12 * (MOD[`${s.type}>${foe.type}`] ?? 1) * (s.strength / 100) * (foe.type === 'inf' && atFord ? 0.7 : 1)
+      hits.push([foe, 0.12 * (MOD[`${s.type}>${foe.type}`] ?? 1) * (s.strength / 100) * (foe.type === 'inf' && atFord ? 0.7 : 1)])
     }
+    for (const [foe, d] of hits) foe.strength -= d
     engaged.clear(); now.forEach(k => engaged.add(k))
     for (const s of squads) {
       if (s.dead) continue
@@ -246,7 +249,7 @@ export async function runBattle(o: { id: string; seed: number; generals: Record<
   }
 
   const generals = o.generals
-  const personas = Object.fromEntries(await Promise.all(HOUSES.map(async h => [h, await generals[h].persona(h)])))
+  const personas = Object.fromEntries(await Promise.all(HOUSES.map(async h => [h, await generals[h].persona(h, o.doctrines?.[h] ?? '')])))
   const init = {
     id: o.id, seed: o.seed, watches: W, ticksPerWatch: TICKS, frameEvery: FRAME,
     map: { nodes: NODES, edges: EDGES, fords: FORDS },
@@ -316,7 +319,8 @@ export async function runBattle(o: { id: string; seed: number; generals: Record<
   const scores = Object.fromEntries(HOUSES.map(h => [h, Object.values(holders).filter(x => x === h).length * 100 + Math.round(squads.filter(s => s.house === h && !s.dead).reduce((a, s) => a + s.strength, 0))]))
   const twoFords = HOUSES.find(h => Object.values(holders).filter(x => x === h).length >= 2)
   const fin = ended as { winner: HouseId; reason: string } | null // set inside tickOnce; TS can't see it
-  const winner = fin?.winner ?? twoFords ?? HOUSES.reduce((a, b) => (scores[a] >= scores[b] ? a : b))
+  const top = Math.max(...HOUSES.map(h => scores[h])), tied = HOUSES.filter(h => scores[h] === top)
+  const winner = fin?.winner ?? twoFords ?? tied[Math.floor(rnd() * tied.length)] // an exact tie goes to the seeded dice, not to whoever is listed first
   const reason = fin?.reason ?? (twoFords ? `${twoFords.toUpperCase()} holds two fords` : `${winner.toUpperCase()} leads on score`)
   ev = watches.at(-1)!.events
   emit('end', { winner, reason })

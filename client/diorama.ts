@@ -18,7 +18,7 @@ export interface Snap {
 const HOUSE: Record<string, THREE.Color> = { rhino: new THREE.Color('#34418f'), kite: new THREE.Color('#b3242f'), orchid: new THREE.Color('#b13f9a'), tiger: new THREE.Color('#e3a812') }
 const SIZE: Record<string, number> = { inf: 40, arch: 40, cav: 50, ele: 76, harkara: 30 }
 // full-strength formation per unit type: soldiers, columns, spacing (paces)
-const FORM: Record<string, [number, number, number]> = { inf: [25, 5, 12], arch: [25, 5, 12], cav: [12, 4, 19], ele: [4, 2, 38] }
+const FORM: Record<string, [number, number, number]> = { inf: [18, 6, 16], arch: [18, 6, 16], cav: [12, 4, 19], ele: [4, 2, 38] }
 const PER_SQUAD = 25
 
 export async function createDiorama(host: HTMLElement, init: any) {
@@ -194,6 +194,15 @@ export async function createDiorama(host: HTMLElement, init: any) {
     outlines[hh].mesh.renderOrder = 1; banners[hh].mesh.renderOrder = 2 // outline under the emblem at the same spot
     ;(outlines[hh].mesh.material as THREE.Material).depthWrite = false
   }
+  // each emblem sits in a painted roundel on the pole tip, so it reads as a carried standard, not a floating sticker
+  const roundel = await batch('roundel', placeholder(g => {
+    g.fillStyle = 'rgba(30,22,14,.35)'; g.beginPath(); g.arc(66, 68, 58, 0, 7); g.fill() // soft drop shadow
+    g.fillStyle = '#2a2016'; g.beginPath(); g.arc(64, 64, 58, 0, 7); g.fill() // ink rim
+    const r = g.createRadialGradient(54, 50, 6, 64, 64, 52); r.addColorStop(0, '#fbf4e4'); r.addColorStop(1, '#e2d2b0'); g.fillStyle = r
+    g.beginPath(); g.arc(64, 64, 51, 0, 7); g.fill()
+    g.strokeStyle = 'rgba(42,32,22,.45)'; g.lineWidth = 2; g.beginPath(); g.arc(64, 64, 45, 0, 7); g.stroke() // inner rule, like a painted shield
+  }), init.squads.length, { tinted: false })
+  roundel.mesh.renderOrder = 1; (roundel.mesh.material as THREE.Material).depthWrite = false
   // soft contact shadows, flat on the ground, one per soldier
   const shTex = new THREE.CanvasTexture(placeholder(g => { const r = g.createRadialGradient(64, 64, 0, 64, 64, 64); r.addColorStop(0, 'rgba(20,24,16,.55)'); r.addColorStop(1, 'rgba(20,24,16,0)'); g.fillStyle = r; g.fillRect(0, 0, 128, 128) })())
   const shadows = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicNodeMaterial({ map: shTex, transparent: true, depthWrite: false }), init.squads.length * PER_SQUAD)
@@ -244,7 +253,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
   const ringGeo = new THREE.RingGeometry(0.7, 1, 48); ringGeo.rotateX(-Math.PI / 2)
   const rings = Array.from({ length: 24 }, () => { const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, depthTest: false, fog: false, color: '#c0392b' })); m.visible = false; scene.add(m); return m })
 
-  const labels: { sp: THREE.Sprite; x: number; y: number; at: THREE.Vector3; aside: THREE.Vector3 }[] = []
+  const labels: { sp: THREE.Sprite; x: number; y: number; spots: { x: number; y: number; v: THREE.Vector3 }[] }[] = []
   // place names on the ground, so the feed's EAST FORD etc. can be found on the map
   for (const n of init.map.nodes.filter((n: any) => /^F\d$|^ferry$|village$|camp$|^gorge$/.test(n.id))) {
     const c = document.createElement('canvas'), g = c.getContext('2d')!, f = '600 30px "Iowan Old Style", Palatino, Georgia, serif'
@@ -254,7 +263,8 @@ export async function createDiorama(host: HTMLElement, init: any) {
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace
     const sp = new THREE.Sprite(new THREE.SpriteNodeMaterial({ map: t, transparent: true, depthWrite: false, depthTest: false }))
     const ford = /^F|ferry/.test(n.id); sp.position.copy(W(n.x, n.y + (ford ? 52 : 34), 6)); sp.scale.set(c.width * 0.36, 44 * 0.36, 1); sp.renderOrder = 3
-    scene.add(sp); labels.push({ sp, x: n.x, y: n.y + (ford ? 52 : 34), at: sp.position.clone(), aside: W(n.x, n.y + (ford ? 52 : 34) + 70, 6) })
+    scene.add(sp); const ly = n.y + (ford ? 52 : 34)
+    labels.push({ sp, x: n.x, y: ly, spots: [[0, 0], [0, 45], [-95, 0], [95, 0], [0, -40]].map(([dx, dy]) => ({ x: n.x + dx, y: ly + dy, v: W(n.x + dx, ly + dy, 6) })) })
   }
 
   // ---- per frame
@@ -336,6 +346,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
       let fl = 0, sh = 0
       const standards: { x: number; y: number; house: string }[] = []
       const bn: Record<string, number> = { rhino: 0, kite: 0, orchid: 0, tiger: 0 }
+      let rn = 0
       // squads in contact are drawn a little apart so the front line between two houses stays visible
       const shown = s.squads.map(q => ({ ...q }))
       for (const a of shown) for (const b of s.squads) {
@@ -366,15 +377,19 @@ export async function createDiorama(host: HTMLElement, init: any) {
         if (flag) { place(flag.mesh, fl, fx, fy, fh * flag.aspect * flip, fh, yaw); flag.tint.setXYZ(fl++, c.r, c.g, c.b) }
         const bb = banners[q.house], ob = outlines[q.house]
         // one emblem per house per spot; other houses' emblems at the same spot step aside
-        const near = standards.filter(o => Math.hypot(o.x - q.x, o.y - q.y) < 40)
+        const near = standards.filter(o => Math.hypot(o.x - q.x, o.y - q.y) < 75) // roundels are ~40 wide: closer than this they overlap
         if (bb && !near.some(o => o.house === q.house)) {
           standards.push({ x: q.x, y: q.y, house: q.house })
-          const bh = 22, px = fx - 0.42 * fh * (flag?.aspect ?? 0) * flip + near.length * 46, lift = fh - 4 + Math.sin(time * 1.5 + fl) * 1.5
-          place(ob.mesh, bn[q.house], px, fy, bh * 1.12 * bb.aspect, bh * 1.12, yaw, 0, lift - bh * 0.06); ob.tint.setXYZ(bn[q.house], 0.02, 0.02, 0.02)
-          place(bb.mesh, bn[q.house], px, fy, bh * bb.aspect, bh, yaw, 0, lift); const bc = c; bb.tint.setXYZ(bn[q.house]++, bc.r, bc.g, bc.b)
+          // on the pole tip (the pole stands at 35% of the pennant art's width); a second house at the spot steps aside
+          const D = q.type === 'ele' ? 40 : 34, px = fx - 0.15 * fh * (flag?.aspect ?? 0.667) * flip + near.length * 46, lift = fh * 0.95
+          const eh = Math.min(D * 0.5, (D * 0.74) / bb.aspect), ey = lift + (D - eh) / 2
+          place(roundel.mesh, rn++, px, fy + 0.5, D, D, yaw, 0, lift)
+          place(ob.mesh, bn[q.house], px, fy + 1, eh * 1.14 * bb.aspect * flip, eh * 1.14, yaw, 0, ey - eh * 0.07); ob.tint.setXYZ(bn[q.house], 0.1, 0.08, 0.06)
+          place(bb.mesh, bn[q.house], px, fy + 1.5, eh * bb.aspect * flip, eh, yaw, 0, ey); bb.tint.setXYZ(bn[q.house]++, c.r * 0.92, c.g * 0.92, c.b * 0.92)
         }
       }
       shadows.count = sh; shadows.instanceMatrix.needsUpdate = true
+      roundel.mesh.count = rn; roundel.mesh.instanceMatrix.needsUpdate = true
       for (const [hh, bb] of Object.entries(banners)) for (const m of [bb, outlines[hh]]) { m.mesh.count = bn[hh]; m.mesh.instanceMatrix.needsUpdate = true; m.tint.needsUpdate = true }
       if (flag) { flag.mesh.count = fl; flag.mesh.instanceMatrix.needsUpdate = true; flag.tint.needsUpdate = true }
       for (const [k, b] of Object.entries(units)) if (k !== 'harkara') { b.mesh.count = n[k]; b.mesh.instanceMatrix.needsUpdate = true; b.tint.needsUpdate = true }
@@ -431,10 +446,13 @@ export async function createDiorama(host: HTMLElement, init: any) {
       const cw = renderer.domElement.clientWidth, ch = renderer.domElement.clientHeight
       for (const l of labels) {
         // a unit standing on the name pushes the name down-map, toward the camera, rather than hiding it
-        l.sp.position.copy(s.squads.some(q => !(q.flags & 2) && Math.abs(q.x - l.x) < 70 && Math.abs(q.y - l.y) < 60) ? l.aside : l.at)
+        // first spot near the place that no unit stands on: the name stays beside its place, never far off
+        // a unit's figures, pennant and roundel rise above it on screen, i.e. up-map: keep names clear of all of it, and of rings
+        const free = l.spots.find(p => !s.squads.some(q => { const ele = q.type === 'ele'; return !(q.flags & 2) && Math.abs(q.x - p.x) < (ele ? 100 : 64) && p.y > q.y - (ele ? 140 : 110) && p.y < q.y + (ele ? 50 : 36) }) && !s.flashes.some(f => Math.hypot(f.x - p.x, f.y - p.y) < 50))
+        l.sp.position.copy((free ?? l.spots[0]).v)
         P.copy(l.sp.position).project(camera)
         const px = (P.x + 1) / 2 * cw, py = (1 - P.y) / 2 * ch, hw = l.sp.scale.x / 2 * ch / (2 * Math.tan(camera.fov * Math.PI / 360) * camera.position.distanceTo(l.sp.position))
-        l.sp.visible = P.z < 1 && px - hw > 8 && px + hw < cw - panelPx - 8 && py > 24 && py < ch - 24
+        l.sp.visible = !!free && P.z < 1 && px - hw > 8 && px + hw < cw - panelPx - 8 && py > 24 && py < ch - 24
       }
       renderer.render(scene, camera)
     },
