@@ -155,6 +155,13 @@ function draw() {
   ctx.drawImage(bg, 0, 0)
   const { a, b, k } = frameAt(t)
   const pos = squadInfo.map((_, i) => ({ x: lerp(a.s[i * 4], b.s[i * 4], k), y: lerp(a.s[i * 4 + 1], b.s[i * 4 + 1], k), str: a.s[i * 4 + 2], flags: a.s[i * 4 + 3] }))
+  // belief ghosts: where the chosen general thinks every unit is
+  const ghosts: { house: string; type: string; x: number; y: number; tx: number; ty: number; age: number }[] = []
+  if (beliefOf) {
+    const bel = watches.findLast(w => w.start <= t)!.beliefs[beliefOf]
+    squadInfo.forEach((s, i) => { const bb = bel[s.id]; if (bb && !(pos[i].flags & 2)) ghosts.push({ house: s.house, type: s.type, x: bb[0], y: bb[1], tx: pos[i].x, ty: pos[i].y, age: bb[2] }) })
+    $('belief-err').textContent = `${beliefOf} belief error: ${Math.round(ghosts.reduce((a, g) => a + Math.hypot(g.x - g.tx, g.y - g.ty), 0) / ghosts.length)} paces from the truth on average`
+  } else $('belief-err').textContent = ''
   if (view === 'diorama' && dio) {
     const cbm = new Map(b.c.map(c => [c[0], c]))
     const flashes = []
@@ -173,6 +180,8 @@ function draw() {
         return { id: cid, house: ev.house, kind: ev.kind, x, y, path: ps.slice(j + 1) }
       }),
       flashes,
+      ghosts,
+      shot: director(t),
     }, performance.now() / 1000)
     return
   }
@@ -206,23 +215,13 @@ function draw() {
     ctx.fillStyle = '#fff'; ctx.fillText({ inf: 'I', arch: 'A', cav: 'C', ele: 'E' }[s.type as string]! + (s.id.endsWith('-2') ? '2' : ''), X(p.x), Y(p.y) + 0.5)
   })
   ctx.globalAlpha = 1
-  // belief ghosts: where the chosen general thinks every unit is
-  if (beliefOf) {
-    const w = watches.findLast(w => w.start <= t)!, bel = w.beliefs[beliefOf]
-    let err = 0, n = 0
-    squadInfo.forEach((s, i) => {
-      const bb = bel[s.id]
-      if (!bb || pos[i].flags & 2) return
-      const [bx, by, age] = bb
-      err += Math.hypot(bx - pos[i].x, by - pos[i].y); n++
-      ctx.setLineDash([3 * S, 3 * S]); ctx.strokeStyle = COLOR[s.house]; ctx.globalAlpha = 0.6; ctx.lineWidth = 1 * S
-      ctx.beginPath(); ctx.moveTo(X(bx), Y(by)); ctx.lineTo(X(pos[i].x), Y(pos[i].y)); ctx.stroke(); ctx.setLineDash([])
-      ctx.globalAlpha = 0.5; ctx.lineWidth = 2 * S; shape(s.type, X(bx), Y(by), 7 * S); ctx.stroke()
-      if (age >= TPW) { ctx.globalAlpha = 0.8; ctx.fillStyle = '#1e1c1a'; ctx.font = `${8 * S}px ui-sans-serif`; ctx.fillText(`${Math.round(age / TPW)}w`, X(bx), Y(by) - 12 * S) }
-      ctx.globalAlpha = 1
-    })
-    $('belief-err').textContent = `${beliefOf} belief error: ${Math.round(err / n)} paces from the truth on average`
-  } else $('belief-err').textContent = ''
+  for (const g of ghosts) {
+    ctx.setLineDash([3 * S, 3 * S]); ctx.strokeStyle = COLOR[g.house]; ctx.globalAlpha = 0.6; ctx.lineWidth = 1 * S
+    ctx.beginPath(); ctx.moveTo(X(g.x), Y(g.y)); ctx.lineTo(X(g.tx), Y(g.ty)); ctx.stroke(); ctx.setLineDash([])
+    ctx.globalAlpha = 0.5; ctx.lineWidth = 2 * S; shape(g.type, X(g.x), Y(g.y), 7 * S); ctx.stroke()
+    if (g.age >= TPW) { ctx.globalAlpha = 0.8; ctx.fillStyle = '#1e1c1a'; ctx.font = `${8 * S}px ui-sans-serif`; ctx.fillText(`${Math.round(g.age / TPW)}w`, X(g.x), Y(g.y) - 12 * S) }
+    ctx.globalAlpha = 1
+  }
   // flashes: interceptions, losses, clashes in the last ~4 game seconds
   for (let i = events.length - 1; i >= 0 && events[i].t > t - 40; i--) {
     const e = events[i]
@@ -234,6 +233,25 @@ function draw() {
     if (e.type !== 'clash') { ctx.fillStyle = ctx.strokeStyle; ctx.font = `bold ${12 * S}px ui-sans-serif`; ctx.fillText(e.type === 'lost' ? 'LOST' : e.type === 'killed' ? 'SHOT' : 'CAUGHT', X(e.x), Y(e.y) - (18 + age * 30) * S) }
     ctx.globalAlpha = 1
   }
+}
+
+// ---- camera director: look ahead ~9 game seconds, pick the best moment, hold it until just after it happens
+const SCORE: Record<string, number> = { standard: 10, killed: 8, caught: 8, decode: 6, truce: 5, clash: 3 }
+let shot: { x: number; y: number; from: number; until: number } | null = null
+function director(tt: number) {
+  if (shot && tt >= shot.from && tt < shot.until) return shot
+  let best: { x: number; y: number; s: number; t: number } | null = null
+  for (const e of events) {
+    if (e.t <= tt) continue
+    if (e.t > tt + 90) break
+    let sc = SCORE[e.type]
+    if (!sc || (e.type === 'decode' && !e.readable)) continue
+    if ((e.type === 'caught' || e.type === 'killed') && letters.get(e.letter)?.kind === 'report') sc = 4
+    const at = e.x != null ? e : nodes.get(`${e.type === 'truce' ? e.a : e.house}-camp`)
+    if (at && (!best || sc > best.s)) best = { x: at.x, y: at.y, s: sc, t: e.t }
+  }
+  shot = best ? { x: best.x, y: best.y, from: tt, until: best.t + 40 } : null
+  return shot
 }
 
 // ---- feed
@@ -288,6 +306,7 @@ $('mail').onclick = e => {
   if (!c) return
   sel = sel === c.dataset.l ? null : c.dataset.l!
   if (sel) { t = letters.get(sel)!.t; setPlaying(true) }
+  dio?.follow(sel && view === 'diorama' ? letters.get(sel)!.id : null) // ride with the (first) rider
   shown = -1
 }
 

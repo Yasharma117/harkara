@@ -13,7 +13,8 @@
   button, select { font: inherit; background: #fff8ec; border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; color: var(--ink); }
   button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
   #clock { font-variant-numeric: tabular-nums; min-width: 110px; font-weight: 600; }
-  #belief-err { color: var(--muted); }
+  #belief-err { position: absolute; top: 12px; left: 12px; z-index: 2; background: #fff8ecd9; border-radius: 6px; padding: 4px 10px; color: var(--ink); pointer-events: none; }
+  #belief-err:empty { display: none; }
   main { position: relative; min-height: 0; }
   canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
   aside { grid-row: 2 / 4; grid-column: 2; border-left: 1px solid var(--line); overflow-y: auto; padding: 8px 12px; }
@@ -47,13 +48,12 @@
   <span role="group" aria-label="Speed" id="speeds"></span>
   <span id="clock">Watch 1/30</span>
   <span>Belief view:</span><span role="group" aria-label="Belief view" id="beliefs"></span>
-  <span id="belief-err"></span>
 </header>
-<main id="stage"><canvas id="c"></canvas></main>
+<main id="stage"><canvas id="c"></canvas><span id="belief-err"></span></main>
 <aside><div id="houses"></div><div role="group" aria-label="Panel" id="tabs"></div><div id="feed" aria-live="off"></div><div id="mail" hidden></div></aside>
 <footer>
   <div class="row"><button id="prev" title="Previous mark" aria-label="Previous mark">◀</button><div class="track"><div id="marks"></div><input id="scrub" type="range" min="0" value="0" aria-label="Timeline" /></div><button id="next" title="Next big moment" aria-label="Next big moment">▶</button><button id="copy">Copy link to this moment</button></div>
-  <div class="legend">Marks: <b style="color:#c0392b">interception</b> · <b style="color:#2e3550">readable decode</b> · <b style="color:#4e7a5a">truce</b> · <b style="color:#888">rout</b>. Ghost shapes in belief view are where that general thinks units are; the line points to the truth.</div>
+  <div class="legend">Marks: <b style="color:#c0392b">interception</b> · <b style="color:#2e3550">readable decode</b> · <b style="color:#4e7a5a">truce</b> · <b style="color:#888">rout</b>. Belief view: ghosts are where that general thinks units are; the dotted line points to the truth. In the diorama, click a rider to ride with it; the director takes the camera back after 20 s.</div>
 </footer>
 <script type="module" src="./main.ts"></script>
 </body>

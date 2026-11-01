@@ -10,6 +10,8 @@ export interface Snap {
   squads: { id: string; house: string; type: string; x: number; y: number; str: number; flags: number }[]
   couriers: { id: string; house: string; kind: string; x: number; y: number; path: { x: number; y: number }[] }[]
   flashes: { type: string; x: number; y: number; age: number }[]
+  ghosts: { house: string; type: string; x: number; y: number; tx: number; ty: number }[] // belief view: where a general thinks units are
+  shot: { x: number; y: number } | null // the camera director's pick, used when nobody is driving
 }
 
 const HOUSE: Record<string, THREE.Color> = { rhino: new THREE.Color('#34418f'), kite: new THREE.Color('#d2452b'), orchid: new THREE.Color('#8a4fb5'), tiger: new THREE.Color('#c98a1c') }
@@ -92,11 +94,11 @@ export async function createDiorama(host: HTMLElement, init: any) {
     harkara: ['unit-harkara', figure(g => { g.strokeStyle = '#6b5a45'; g.lineWidth = 6; g.beginPath(); g.moveTo(40, 50); g.lineTo(88, 100); g.stroke() })],
   }
   const tintAttr = (n: number) => new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3)
-  async function batch(name: string, fallback: () => HTMLCanvasElement, count: number, opts: { tinted: boolean; opacity?: number }) {
-    const t = await tex(name, fallback)
+  async function batch(name: string, fallback: () => HTMLCanvasElement, count: number, opts: { tinted: boolean; opacity?: number }, t?: THREE.Texture) {
+    t ??= await tex(name, fallback)
     const geo = new THREE.PlaneGeometry(1, 1); geo.translate(0, 0.5, 0)
     const tint = tintAttr(count)
-    const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: true })
+    const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: !opts.opacity })
     const s = texture(t, uv())
     if (opts.tinted) {
       // near-white cloth takes the house colour; skin, wood and metal stay as painted
@@ -104,16 +106,22 @@ export async function createDiorama(host: HTMLElement, init: any) {
       mat.colorNode = mix(s.rgb, s.rgb.mul(instancedBufferAttribute(tint)).mul(1.25), cloth)
     } else mat.colorNode = s.rgb
     mat.opacityNode = s.a.mul(float(opts.opacity ?? 1))
-    mat.alphaTest = 0.35
+    mat.alphaTest = opts.opacity ? 0.05 : 0.35
     const mesh = new THREE.InstancedMesh(geo, mat, count)
     mesh.count = 0; mesh.frustumCulled = false
     scene.add(mesh)
     const aspect = art[name] ? art[name].w / art[name].h : 1
-    return { mesh, tint, aspect }
+    return { mesh, tint, aspect, t }
   }
 
   const units: Record<string, Awaited<ReturnType<typeof batch>>> = {}
   for (const [k, [name, fb]] of Object.entries(SPRITES)) units[k] = await batch(name, fb, k === 'harkara' ? 80 : init.squads.length * PER_SQUAD, { tinted: true })
+  // ghosts: the same sprites, faded and greyed, one per squad, with a dotted ink line to the truth
+  const ghostB: Record<string, Awaited<ReturnType<typeof batch>>> = {}
+  for (const k of ['inf', 'arch', 'cav', 'ele']) ghostB[k] = await batch('', SPRITES[k][1], init.squads.length, { tinted: true, opacity: 0.45 }, units[k].t)
+  for (const k in ghostB) ghostB[k].aspect = units[k].aspect
+  const dots = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicNodeMaterial({ color: '#1e1c1a', transparent: true, opacity: 0.55 }))
+  dots.frustumCulled = false; scene.add(dots)
 
   // props: trees on the hills, huts at the villages, a ferry, rocks
   const rnd = (() => { let s = 7; return () => ((s = (s * 16807) % 2147483647) / 2147483647) })()
@@ -147,10 +155,57 @@ export async function createDiorama(host: HTMLElement, init: any) {
   // ---- per frame
   const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), S = new THREE.Vector3(), P = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0)
   const lastX = new Map<string, number>(), facing = new Map<string, number>()
+  let lastTime = 0
   const place = (mesh: THREE.InstancedMesh, i: number, x: number, y: number, w: number, h: number, yaw: number, lean = 0, lift = 0) => {
     P.copy(W(x, y, lift)); Q.setFromAxisAngle(up, yaw)
     if (lean) Q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), lean))
     S.set(w, h, 1); M.compose(P, Q, S); mesh.setMatrixAt(i, M)
+  }
+
+  // ---- camera: the director drives unless the viewer has touched it in the last 20 s; following a rider overrides both
+  const OVER = { t: new THREE.Vector3(0, 0, 40), r: 1600, polar: 0.86, az: 0 }
+  const want = { t: OVER.t.clone(), r: OVER.r, polar: OVER.polar, az: OVER.az }
+  const sph = new THREE.Spherical()
+  let userAt = -1e9, follow: { id: string; seen: boolean; goneAt: number } | null = null, riderIds: string[] = []
+  const status = document.createElement('div')
+  status.style.cssText = 'position:absolute;left:12px;bottom:12px;background:#fff8ecd9;border-radius:6px;padding:4px 10px;font-size:12px;pointer-events:none'
+  host.append(status)
+  controls.addEventListener('start', () => { userAt = performance.now(); follow = null })
+  // click a rider to ride with it (a click, not a drag)
+  const ray = new THREE.Raycaster(), down = { x: 0, y: 0 }
+  renderer.domElement.addEventListener('pointerdown', e => Object.assign(down, { x: e.clientX, y: e.clientY }))
+  renderer.domElement.addEventListener('pointerup', e => {
+    if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) return
+    const r = renderer.domElement.getBoundingClientRect()
+    ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera)
+    const hit = ray.intersectObject(units.harkara.mesh)[0]
+    if (hit?.instanceId != null && riderIds[hit.instanceId]) follow = { id: riderIds[hit.instanceId], seen: true, goneAt: 0 }
+  })
+  function steer(s: Snap, dt: number) {
+    const now = performance.now(), idle = now - userAt > 20000
+    let label = idle ? 'Camera: director' : `Camera: yours (director back in ${Math.ceil((20000 - (now - userAt)) / 1000)} s)`
+    const c = follow && s.couriers.find(c => c.id === follow!.id)
+    if (follow) {
+      if (c) { follow.seen = true; follow.goneAt = 0 } else if (follow.seen && !follow.goneAt) follow.goneAt = now
+      if (follow.goneAt && now - follow.goneAt > 2500) follow = null
+    }
+    let k = 2
+    if (follow && c) {
+      // ride behind the courier, low, staying on the south side so the backdrops still read
+      const ahead = c.path[0] ?? c, dx = ahead.x - c.x, dy = ahead.y - c.y
+      want.t.copy(W(c.x, c.y, 10)); want.r = 170; want.polar = 1.02
+      if (Math.hypot(dx, dy) > 1) want.az = THREE.MathUtils.clamp(Math.atan2(-dx, -dy), -0.7, 0.7)
+      k = 4; label = 'Following a rider · drag to let go'
+    } else if (follow) label = follow.seen ? 'The ride is over' : 'Waiting for the rider to leave camp'
+    else if (!idle) return label
+    else if (s.shot) { want.t.copy(W(s.shot.x, s.shot.y)); want.r = 650; want.polar = 0.8 }
+    else Object.assign(want, { t: want.t.copy(OVER.t), r: OVER.r, polar: OVER.polar, az: OVER.az })
+    const e = 1 - Math.exp(-dt * k)
+    sph.setFromVector3(P.copy(camera.position).sub(controls.target))
+    controls.target.lerp(want.t, e)
+    sph.radius += (want.r - sph.radius) * e; sph.phi += (want.polar - sph.phi) * e; sph.theta += (want.az - sph.theta) * e
+    camera.position.setFromSpherical(sph).add(controls.target)
+    return label
   }
 
   function resize() { const r = host.getBoundingClientRect(); renderer.setSize(r.width, r.height, false); camera.aspect = r.width / r.height; camera.updateProjectionMatrix() }
@@ -158,7 +213,10 @@ export async function createDiorama(host: HTMLElement, init: any) {
 
   return {
     canvas: renderer.domElement,
+    follow(id: string | null) { follow = id ? { id, seen: false, goneAt: 0 } : null },
     render(s: Snap, time: number) {
+      const dt = Math.min(0.1, time - (lastTime || time)); lastTime = time
+      status.textContent = steer(s, dt) ?? ''
       controls.update()
       const yaw = Math.atan2(camera.position.x - controls.target.x, camera.position.z - controls.target.z)
       // soldiers in loose 3×3 blocks, fewer as the squad loses strength
@@ -195,8 +253,21 @@ export async function createDiorama(host: HTMLElement, init: any) {
         for (const p of c.path) { const d = Math.hypot(p.x - ax, p.y - ay), steps = Math.max(1, Math.ceil(d / 15)); for (let j = 0; j <= steps; j++) pts.push(W(ax + ((p.x - ax) * j) / steps, ay + ((p.y - ay) * j) / steps, 1.5)); ax = p.x; ay = p.y }
         line.geometry.setFromPoints(pts.length > 1 ? pts : [W(c.x, c.y, 1.5), W(c.x, c.y, 1.5)])
       })
+      riderIds = s.couriers.slice(0, 80).map(c => c.id)
       h.mesh.count = Math.min(80, s.couriers.length); h.mesh.instanceMatrix.needsUpdate = true; h.tint.needsUpdate = true
       for (const [id, l] of routes) if (!live.has(id)) { scene.remove(l); l.geometry.dispose(); routes.delete(id) }
+      // belief ghosts + dotted lines to where the unit really is
+      const gn: Record<string, number> = { inf: 0, arch: 0, cav: 0, ele: 0 }, seg: THREE.Vector3[] = []
+      const grey = new THREE.Color('#9a958c')
+      for (const g of s.ghosts) {
+        const b = ghostB[g.type], c = HOUSE[g.house].clone().lerp(grey, 0.5), hgt = SIZE[g.type] * 1.1
+        place(b.mesh, gn[g.type], g.x, g.y, hgt * b.aspect, hgt, yaw, 0, 4)
+        b.tint.setXYZ(gn[g.type]++, c.r, c.g, c.b)
+        const d = Math.hypot(g.tx - g.x, g.ty - g.y), n = Math.floor(d / 14)
+        for (let j = 0; j < n; j++) { const a = j / n, z = (j + 0.5) / n; seg.push(W(g.x + (g.tx - g.x) * a, g.y + (g.ty - g.y) * a, 3), W(g.x + (g.tx - g.x) * z, g.y + (g.ty - g.y) * z, 3)) }
+      }
+      for (const [k, b] of Object.entries(ghostB)) { b.mesh.count = gn[k]; b.mesh.instanceMatrix.needsUpdate = true; b.tint.needsUpdate = true }
+      dots.geometry.dispose(); dots.geometry = new THREE.BufferGeometry().setFromPoints(seg)
       // props and mist face the camera
       for (const { b, at } of props) { at.forEach((p, i) => place(b.mesh, i, p.x, p.y, p.s * b.aspect, p.s, yaw)); b.mesh.instanceMatrix.needsUpdate = true }
       mistAt.forEach((m: any, i: number) => {
@@ -214,6 +285,6 @@ export async function createDiorama(host: HTMLElement, init: any) {
       })
       renderer.render(scene, camera)
     },
-    dispose() { renderer.setAnimationLoop(null); renderer.dispose(); renderer.domElement.remove(); removeEventListener('resize', resize) },
+    dispose() { renderer.setAnimationLoop(null); renderer.dispose(); renderer.domElement.remove(); status.remove(); removeEventListener('resize', resize) },
   }
 }
