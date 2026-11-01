@@ -1,5 +1,5 @@
 {
-  "_note": "Free tiers change without notice. Edit here, not in code. `npm run check` pings every model below. Model ids marked VERIFY are from the spec, not yet confirmed against the provider's /models list.",
+  "_note": "Free tiers change without notice. Edit here, not in code. `npm run check` pings every model below. Ids checked against each provider's public model list on 2026-11-01.",
   "providers": {
     "groq": { "base": "https://api.groq.com/openai/v1", "key": "GROQ_API_KEY", "rpm": 30, "tpm": 8000, "json": true },
     "nim": { "base": "https://integrate.api.nvidia.com/v1", "key": "NVIDIA_API_KEY", "rpm": 40, "tpm": 0, "json": true },
@@ -9,22 +9,22 @@
   "houses": {
     "rhino": [
       { "provider": "groq", "model": "openai/gpt-oss-120b" },
-      { "provider": "nim", "model": "openai/gpt-oss-120b" },
+      { "provider": "nim", "model": "openai/gpt-oss-20b" },
       { "provider": "local", "model": "local" }
     ],
     "kite": [
-      { "provider": "groq", "model": "qwen/qwen3.8-27b", "_": "VERIFY" },
+      { "provider": "groq", "model": "qwen/qwen3.8-27b" },
       { "provider": "groq", "model": "qwen/qwen3-32b" },
       { "provider": "local", "model": "local" }
     ],
     "orchid": [
-      { "provider": "nim", "model": "nvidia/nemotron-3-super", "_": "VERIFY" },
-      { "provider": "nim", "model": "meta/llama-3.3-70b-instruct" },
+      { "provider": "nim", "model": "nvidia/nemotron-3-super-120b-a12b" },
+      { "provider": "nim", "model": "nvidia/llama-3.1-nemotron-70b-instruct" },
       { "provider": "local", "model": "local" }
     ],
     "tiger": [
-      { "provider": "openrouter", "model": "google/gemma-4-31b-it:free", "_": "VERIFY" },
-      { "provider": "nim", "model": "google/gemma-3-27b-it" },
+      { "provider": "openrouter", "model": "google/gemma-4-31b-it:free" },
+      { "provider": "nim", "model": "google/gemma-4-31b-it" },
       { "provider": "local", "model": "local" }
     ]
   }
