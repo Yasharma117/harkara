@@ -15,7 +15,7 @@ export interface Snap {
   shot: { x: number; y: number } | null // the camera director's pick, used when nobody is driving
 }
 
-const HOUSE: Record<string, THREE.Color> = { rhino: new THREE.Color('#34418f'), kite: new THREE.Color('#d2452b'), orchid: new THREE.Color('#b13f9a'), tiger: new THREE.Color('#e0900a') }
+const HOUSE: Record<string, THREE.Color> = { rhino: new THREE.Color('#34418f'), kite: new THREE.Color('#b3242f'), orchid: new THREE.Color('#b13f9a'), tiger: new THREE.Color('#e3a812') }
 const SIZE: Record<string, number> = { inf: 40, arch: 40, cav: 50, ele: 76, harkara: 30 }
 // full-strength formation per unit type: soldiers, columns, spacing (paces)
 const FORM: Record<string, [number, number, number]> = { inf: [25, 5, 12], arch: [25, 5, 12], cav: [12, 4, 19], ele: [4, 2, 38] }
@@ -35,7 +35,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
   const hills = init.map.nodes.filter((n: any) => n.mist)
   const height = (x: number, y: number) => {
     let h = 0
-    for (const n of hills) h += 110 * Math.exp(-((x - n.x) ** 2 + (y - n.y) ** 2) / (2 * 115 ** 2))
+    for (const n of hills) h += 50 * Math.exp(-((x - n.x) ** 2 + (y - n.y) ** 2) / (2 * 115 ** 2))
     const river = Math.abs(y - 500)
     if (river < 60) h = h * (river / 60) - 8 * (1 - river / 60)
     return h
@@ -170,7 +170,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
       // the whole figure takes the house colour, keeping the painted light and line (reads at broadcast distance)
       // tint the cloth and mid-tones, keep the painted darks (line work, shading) as they are
       const lum = dot(s.rgb, vec3(0.3, 0.59, 0.11))
-      mat.colorNode = mix(s.rgb, lum.mul(1.5).add(0.12).mul(instancedBufferAttribute(tint)), smoothstep(0.06, 0.4, lum).mul(0.95))
+      mat.colorNode = mix(s.rgb, lum.mul(1.5).add(0.12).mul(instancedBufferAttribute(tint)), smoothstep(0.06, 0.4, lum).mul(0.82))
     } else mat.colorNode = s.rgb
     mat.opacityNode = s.a.mul(float(opts.opacity ?? 1))
     mat.alphaTest = opts.opacity ? 0.05 : 0.35
@@ -234,15 +234,28 @@ export async function createDiorama(host: HTMLElement, init: any) {
 
   // mist: soft cards drifting over the misty places
   const mistTex = new THREE.CanvasTexture(placeholder(g => { const r = g.createRadialGradient(64, 64, 0, 64, 64, 64); r.addColorStop(0, 'rgba(255,255,255,.75)'); r.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0, 0, 128, 128) })())
-  const mistMat = new THREE.MeshBasicNodeMaterial({ map: mistTex, transparent: true, depthWrite: false, depthTest: false, opacity: 0.28 }) // no depth test: cards cut hard rims where they cross the hills
+  const mistMat = new THREE.MeshBasicNodeMaterial({ map: mistTex, transparent: true, depthWrite: false, depthTest: false, opacity: 0.06 }) // no depth test: cards cut hard rims where they cross the hills
   const mist = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), mistMat, hills.length * 4)
   mist.frustumCulled = false; scene.add(mist)
   const mistAt = hills.flatMap((n: any) => [0, 1, 2, 3].map(i => ({ x: n.x + (i - 1.5) * 50, y: n.y + ((i * 37) % 60) - 30, s: 220 + i * 30, ph: i * 1.7 })))
 
   // couriers' ink routes + flash rings
   const routes = new Map<string, THREE.Line>()
-  const ringGeo = new THREE.RingGeometry(0.8, 1, 48); ringGeo.rotateX(-Math.PI / 2)
-  const rings = Array.from({ length: 24 }, () => { const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, color: '#c0392b' })); m.visible = false; scene.add(m); return m })
+  const ringGeo = new THREE.RingGeometry(0.7, 1, 48); ringGeo.rotateX(-Math.PI / 2)
+  const rings = Array.from({ length: 24 }, () => { const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, depthTest: false, fog: false, color: '#c0392b' })); m.visible = false; scene.add(m); return m })
+
+  const labels: { sp: THREE.Sprite; x: number; y: number; at: THREE.Vector3; aside: THREE.Vector3 }[] = []
+  // place names on the ground, so the feed's EAST FORD etc. can be found on the map
+  for (const n of init.map.nodes.filter((n: any) => /^F\d$|^ferry$|village$|camp$|^gorge$/.test(n.id))) {
+    const c = document.createElement('canvas'), g = c.getContext('2d')!, f = '600 30px "Iowan Old Style", Palatino, Georgia, serif'
+    g.font = f; c.width = Math.ceil(g.measureText(n.name).width) + 24; c.height = 44
+    g.font = f; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round'
+    g.lineWidth = 7; g.strokeStyle = 'rgba(242,233,216,.92)'; g.strokeText(n.name, c.width / 2, 22); g.fillStyle = '#2e2418'; g.fillText(n.name, c.width / 2, 22)
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace
+    const sp = new THREE.Sprite(new THREE.SpriteNodeMaterial({ map: t, transparent: true, depthWrite: false, depthTest: false }))
+    const ford = /^F|ferry/.test(n.id); sp.position.copy(W(n.x, n.y + (ford ? 52 : 34), 6)); sp.scale.set(c.width * 0.36, 44 * 0.36, 1); sp.renderOrder = 3
+    scene.add(sp); labels.push({ sp, x: n.x, y: n.y + (ford ? 52 : 34), at: sp.position.clone(), aside: W(n.x, n.y + (ford ? 52 : 34) + 70, 6) })
+  }
 
   // ---- per frame
   const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), S = new THREE.Vector3(), P = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0)
@@ -301,9 +314,10 @@ export async function createDiorama(host: HTMLElement, init: any) {
     return label
   }
 
+  let panelPx = 0
   function resize() {
     const r = host.getBoundingClientRect(), pad = Number(getComputedStyle(host).getPropertyValue('--panel').replace('px', '')) || 0
-    renderer.setSize(r.width, r.height, false); camera.aspect = r.width / r.height
+    panelPx = pad; renderer.setSize(r.width, r.height, false); camera.aspect = r.width / r.height
     camera.setViewOffset(r.width, r.height, pad * 0.8, 0, r.width, r.height) // centre the picture in the space left of the overlay panel
     camera.updateProjectionMatrix()
   }
@@ -409,10 +423,19 @@ export async function createDiorama(host: HTMLElement, init: any) {
       rings.forEach((r, i) => {
         const f = s.flashes[i]; r.visible = !!f
         if (!f) return
-        r.position.copy(W(f.x, f.y, 2)); r.scale.setScalar(8 + f.age * 40)
+        r.position.copy(W(f.x, f.y, 2)); r.scale.setScalar(16 + f.age * 50)
         const m = r.material as THREE.MeshBasicNodeMaterial
-        m.color.set(f.type === 'clash' ? '#555' : f.type === 'lost' ? '#ffffff' : '#c0392b'); m.opacity = 1 - f.age
+        m.color.set(f.type === 'clash' ? '#efe3c4' : f.type === 'lost' ? '#ffffff' : '#ff3b24'); m.opacity = 0.9 * (1 - f.age)
       })
+      // labels: hide any that would be cut by the view edge or the panel, or that sit on a unit
+      const cw = renderer.domElement.clientWidth, ch = renderer.domElement.clientHeight
+      for (const l of labels) {
+        // a unit standing on the name pushes the name down-map, toward the camera, rather than hiding it
+        l.sp.position.copy(s.squads.some(q => !(q.flags & 2) && Math.abs(q.x - l.x) < 70 && Math.abs(q.y - l.y) < 60) ? l.aside : l.at)
+        P.copy(l.sp.position).project(camera)
+        const px = (P.x + 1) / 2 * cw, py = (1 - P.y) / 2 * ch, hw = l.sp.scale.x / 2 * ch / (2 * Math.tan(camera.fov * Math.PI / 360) * camera.position.distanceTo(l.sp.position))
+        l.sp.visible = P.z < 1 && px - hw > 8 && px + hw < cw - panelPx - 8 && py > 24 && py < ch - 24
+      }
       renderer.render(scene, camera)
     },
     dispose() { renderer.setAnimationLoop(null); renderer.dispose(); renderer.domElement.remove(); status.remove(); removeEventListener('resize', resize) },

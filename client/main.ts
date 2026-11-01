@@ -1,7 +1,7 @@
 // Cycle 0 grey-box viewer: flat shapes on a 2D canvas. three.js arrives with the art in cycle 2.
 import type { Ev, WatchFile } from '../engine/sim.ts'
 
-const COLOR: Record<string, string> = { rhino: '#34418f', kite: '#d2452b', orchid: '#b13f9a', tiger: '#e0900a' }
+const COLOR: Record<string, string> = { rhino: '#34418f', kite: '#b3242f', orchid: '#b13f9a', tiger: '#e3a812' }
 const HOUSES = ['rhino', 'kite', 'orchid', 'tiger']
 const $ = (id: string) => document.getElementById(id)!
 const params = new URLSearchParams(location.search)
@@ -170,8 +170,12 @@ function draw() {
   } else $('belief-err').textContent = ''
   if (view === 'diorama' && dio) {
     const cbm = new Map(b.c.map(c => [c[0], c]))
-    const flashes = []
-    for (let i = events.length - 1; i >= 0 && events[i].t > t - 40; i--) { const e = events[i]; if (e.t <= t && ['caught', 'killed', 'lost', 'clash'].includes(e.type)) flashes.push({ type: e.type, x: e.x, y: e.y, age: (t - e.t) / 40 }) }
+    const flashes: { type: string; x: number; y: number; age: number }[] = []
+    for (let i = events.length - 1; i >= 0 && events[i].t > t - 120; i--) { const e = events[i]; if (e.t <= t && ['caught', 'killed', 'lost', 'clash'].includes(e.type) && !(e.type === 'clash' && flashes.some(f => Math.hypot(f.x - e.x, f.y - e.y) < 60))) flashes.push({ type: e.type, x: e.x, y: e.y, age: (t - e.t) / 120 }) }
+    // the latest catch or shot keeps a ring until the next one (within a watch), so a cold viewer can find it
+    // armies of two houses in contact always show a clash ring, even between clash events
+    pos.forEach((p, i) => { if (p.flags & 2) return; for (let j = i + 1; j < pos.length; j++) { const q = pos[j]; if (q.flags & 2 || squadInfo[i].house === squadInfo[j].house || Math.hypot(p.x - q.x, p.y - q.y) > 55) continue; const x = (p.x + q.x) / 2, y = (p.y + q.y) / 2; if (!flashes.some(f => Math.hypot(f.x - x, f.y - y) < 60)) flashes.push({ type: 'clash', x, y, age: 0.3 }) } })
+    if (!flashes.some(f => f.type === 'caught' || f.type === 'killed')) for (let i = events.length - 1; i >= 0 && events[i].t > t - TPW; i--) { const e = events[i]; if (e.t <= t && (e.type === 'caught' || e.type === 'killed')) { flashes.push({ type: e.type, x: e.x, y: e.y, age: 0.45 }); break } }
     dio.render({
       t,
       squads: squadInfo.map((s, i) => ({ ...s, ...pos[i] })),
@@ -282,9 +286,9 @@ function line(e: Ev): string | null {
   const L = letters.get(e.letter)
   switch (e.type) {
     case 'thought': return `<div class="item" style="--c:${COLOR[e.house]}">${W(e)} <b>${e.house}</b> thinks: ${e.text}</div>`
-    case 'courier': return e.kind === 'report' || L!.id !== e.id ? null : `<div class="item" style="--c:${COLOR[e.house]}">${W(e)} ${e.house} sends a ${e.kind === 'decoy' ? '<b>decoy</b>' : e.cipher ? 'ciphered' : 'plain'} ${e.kind} to ${name(e.to)}${e.double ? ', two riders by two roads' : ''}${e.depart > e.t ? ' (leaves next watch, enciphering)' : ''}: <span class="mono">${e.plain}</span></div>`
+    case 'courier': return e.kind === 'report' || L!.id !== e.id ? null : `<div class="item" style="--c:${COLOR[e.house]}">${W(e)} ${e.house} sends ${e.kind === 'decoy' ? 'a <b>decoy</b>' : `a ${e.cipher ? 'ciphered' : 'plain'} ${e.kind}`} to ${name(e.to)}${e.double ? ', two riders by two roads' : ''}${e.depart > e.t ? ' (leaves next watch, enciphering)' : ''}: <span class="mono">${e.plain}</span></div>`
     case 'caught': case 'killed': return `<div class="item big" style="--c:#c0392b">${W(e)} <b>${e.type === 'caught' ? 'Intercepted' : 'Rider shot'}</b>: ${e.house}'s ${L?.kind ?? 'letter'} ${e.type === 'caught' ? 'taken' : 'destroyed'} by ${name(e.by)}${L && L.kind !== 'report' ? `<br><span class="mono">${L.cipher ?? L.plain}</span>` : ''}</div>`
-    case 'lost': return L?.kind === 'report' ? null : `<div class="item" style="--c:#888">${W(e)} ${e.house} rider ${e.why}.</div>`
+    case 'lost': return L?.kind === 'report' || e.why === 'nobody left to receive it' ? null : `<div class="item" style="--c:#888">${W(e)} ${e.house} rider ${e.why}.</div>`
     case 'decode': return `<div class="item big" style="--c:${COLOR[e.house]}">${W(e)} <b>${e.house}</b> clerks ${e.readable ? '<b>can read</b>' : 'work on'} ${L?.house}'s letter:<br><span class="mono">${e.text}</span><br><small>truth: <span class="mono">${L?.plain}</span></small></div>`
     case 'intel': return e.plain ? null : `<div class="item" style="--c:${COLOR[e.house]}">${W(e)} captured ${e.from} letter reaches ${e.house} camp: <span class="mono">${e.text}</span></div>`
     case 'truce': return `<div class="item big" style="--c:#4e7a5a">${W(e)} <b>Truce</b> between ${e.a} and ${e.b} until watch ${e.until}.</div>`
