@@ -331,7 +331,7 @@ function predict() {
   for (const p of done) { if (!p.right) break; streak++ }
   const cap = (h: string) => h[0].toUpperCase() + h.slice(1)
   $('predict').innerHTML = !mine
-    ? t < TPW ? `<b>Who wins?</b><br>${HOUSES.map(h => `<button data-h="${h}">${cap(h)}</button>`).join('')}` : '<small>Predictions close after watch 1.</small>'
+    ? t < TPW ? `<b>Who wins?</b> <small>Pick to start, or press Play.</small><br>${HOUSES.map(h => `<button data-h="${h}">${cap(h)}</button>`).join('')}` : '<small>Predictions close after watch 1.</small>'
     : mine.right === undefined ? `Your pick: <b>${cap(mine.pick)}</b>`
     : `You picked <b>${cap(mine.pick)}</b>: ${mine.right ? 'right' : 'wrong'}. Streak: <b>${streak}</b>`
 }
@@ -410,7 +410,7 @@ let last = performance.now()
 function loop(now: number) {
   requestAnimationFrame(loop) // first, so one bad frame can't stop playback
   const loaded = end ? TOTAL : watches.length * TPW - 1
-  if (playing && t < loaded) t = Math.min(t + ((now - last) / 1000) * 10 * speed, loaded) // a linked moment may be ahead of the stream: wait
+  if (playing && t < loaded) t = Math.min(t + (Math.min(now - last, 100) / 1000) * 10 * speed, loaded) // capped: a stalled or background tab must not skip the battle // a linked moment may be ahead of the stream: wait
   last = now
   if (playing && t >= TOTAL) setPlaying(false)
   scrub.value = String(Math.floor(t))
