@@ -21,7 +21,7 @@ let end: any = null
 
 // ---- controls
 let t = Number(hashT ?? params.get('t') ?? 0), playing = !hashT, speed = 8, beliefOf: string | null = null
-for (const b of index) $('battle').append(new Option(`${b.id} (${b.winner} won)`, b.id, false, b.id === id))
+for (const b of index) $('battle').append(new Option(b.id, b.id, false, b.id === id)) // no winner here: it would spoil Predict
 $('battle').onchange = e => { location.hash = (e.target as HTMLSelectElement).value; location.reload() }
 const playBtn = $('play')
 const setPlaying = (p: boolean) => { playing = p; playBtn.textContent = p ? 'Pause' : 'Play' }
@@ -48,7 +48,7 @@ if (params.get('view') === 'diorama') ($('views').lastElementChild as HTMLButton
 group('speeds', [['2×', 2], ['8×', 8], ['32×', 32]], v => (speed = v), speed)
 group('beliefs', [['Truth', null], ...HOUSES.map(h => [h[0].toUpperCase() + h.slice(1), h] as [string, string])], v => (beliefOf = v), null)
 const scrub = $('scrub') as HTMLInputElement
-scrub.max = String(TOTAL - 1)
+scrub.max = String(TOTAL) // the end event lands on tick TOTAL
 scrub.oninput = () => { t = Number(scrub.value); setPlaying(false) }
 const jump = (to: number) => { t = Math.max(0, to - 30); setPlaying(false) }
 $('next').onclick = () => { const m = marks.filter(m => m - 30 > t + 1).sort((a, b) => a - b)[0]; if (m != null) jump(m) }
@@ -284,6 +284,29 @@ function feed() {
   for (let i = n - 1; i >= 0 && out.length < 80; i--) { const l = line(events[i]); if (l) out.push(l) }
   if (tab === 'feed') $('feed').innerHTML = out.join('')
   else mailbag()
+  predict()
+}
+
+// ---- predict: pick a winner during watch 1; the streak lives in this browser only
+type Pick = { pick: string; right?: boolean; at?: number }
+const picks: Record<string, Pick> = JSON.parse(localStorage.getItem('harkara-picks') ?? '{}')
+const savePicks = () => localStorage.setItem('harkara-picks', JSON.stringify(picks))
+function predict() {
+  const mine = picks[id], fin = events.find(e => e.type === 'end' && e.t <= t)
+  if (mine && fin && mine.right === undefined) { mine.right = mine.pick === fin.winner; mine.at = Date.now(); savePicks() }
+  const done = Object.values(picks).filter(p => p.at).sort((a, b) => b.at! - a.at!)
+  let streak = 0
+  for (const p of done) { if (!p.right) break; streak++ }
+  const cap = (h: string) => h[0].toUpperCase() + h.slice(1)
+  $('predict').innerHTML = !mine
+    ? t < TPW ? `<b>Who wins?</b><br>${HOUSES.map(h => `<button data-h="${h}">${cap(h)}</button>`).join('')}` : '<small>Predictions close after watch 1.</small>'
+    : mine.right === undefined ? `Your pick: <b>${cap(mine.pick)}</b>`
+    : `You picked <b>${cap(mine.pick)}</b>: ${mine.right ? 'right' : 'wrong'}. Streak: <b>${streak}</b>`
+}
+if (!picks[id] && t === 0) setPlaying(false) // hold the start so there's time to pick; Play skips it
+$('predict').onclick = e => {
+  const h = (e.target as HTMLElement).dataset.h
+  if (h && t < TPW) { picks[id] = { pick: h }; savePicks(); predict(); setPlaying(true) }
 }
 
 // ---- mailbag: every letter sent so far, its fate as of now (no spoilers), what the captor has decoded
@@ -297,27 +320,55 @@ function mailbag() {
     const riders = L.double ? 2 : 1
     if (fates.length < riders) fates.push(`<span class="fate" style="color:var(--muted)">${L.depart > t ? 'enciphering' : 'in flight'}</span>`)
     const dec = new Map(evs.filter(e => e.type === 'decode').map(e => [e.house, e]))
-    out.push(`<div class="item card" data-l="${L.letter}" aria-current="${sel === L.letter}" style="--c:${COLOR[L.house]}">${W(L)} <b>${L.house}</b> → ${name(L.to).replace(`${L.house} `, '')} · ${L.kind === 'decoy' ? 'decoy' : L.cipher ? 'ciphered' : 'plain'}${riders > 1 ? ' · two riders' : ''}<br>${fates.join(' · ')}<br><span class="mono">${L.plain}</span>${[...dec.values()].map(d => `<br><small>${d.house} reads${d.readable ? '' : ' so far'}:</small> <span class="mono">${d.text}</span>`).join('')}</div>`)
+    const last = [...dec.values()].pop()
+    out.push(`<div class="item card" data-l="${L.letter}" aria-current="${sel === L.letter}" style="--c:${COLOR[L.house]}">${W(L)} <b>${L.house}</b> → ${name(L.to).replace(`${L.house} `, '')} · ${L.kind === 'decoy' ? 'decoy' : L.cipher ? 'ciphered' : 'plain'}${riders > 1 ? ' · two riders' : ''}<br>${fates.join(' · ')}<br><span class="mono">${L.plain}</span>${[...dec.values()].map(d => `<br><small>${d.house} reads${d.readable ? '' : ' so far'}:</small> <span class="mono">${d.text}</span>`).join('')}${last ? `<br><button class="dispatch" data-h="${last.house}">Save dispatch card</button>` : ''}</div>`)
   }
   $('mail').innerHTML = out.join('') || '<div class="item">No letters yet.</div>'
 }
 $('mail').onclick = e => {
   const c = (e.target as HTMLElement).closest<HTMLElement>('.card')
   if (!c) return
+  const btn = (e.target as HTMLElement).closest<HTMLElement>('.dispatch')
+  if (btn) return dispatchCard(c.dataset.l!, btn.dataset.h!)
   sel = sel === c.dataset.l ? null : c.dataset.l!
   if (sel) { t = letters.get(sel)!.t; setPlaying(true) }
   dio?.follow(sel && view === 'diorama' ? letters.get(sel)!.id : null) // ride with the (first) rider
   shown = -1
 }
 
+// ---- dispatch card: an intercepted letter as a share image, decoded as far as the captor has got by now
+function dispatchCard(lid: string, captor: string) {
+  const L = letters.get(lid)!, d = byLetter.get(lid)!.filter(e => e.type === 'decode' && e.house === captor && e.t <= t).pop()!
+  const c = document.createElement('canvas'); c.width = 1200; c.height = 630
+  const g = c.getContext('2d')!
+  g.fillStyle = '#f2e9d8'; g.fillRect(0, 0, 1200, 630)
+  g.fillStyle = COLOR[L.house]; g.fillRect(0, 0, 1200, 14)
+  g.fillStyle = '#1e1c1a'; g.font = '600 28px ui-sans-serif, system-ui'
+  g.fillText(`INTERCEPTED · WATCH ${Math.floor(d.t / TPW) + 1}`, 70, 90)
+  g.fillStyle = '#6b6459'; g.font = '24px ui-sans-serif, system-ui'
+  g.fillText(`${L.house} to ${name(L.to).replace(`${L.house} `, '')}, taken by ${captor}`, 70, 132)
+  g.fillStyle = '#1e1c1a'; g.font = '44px ui-monospace, Menlo, monospace'
+  const words = d.text.split(' '), lines: string[] = ['']
+  for (const w of words) { const next = `${lines.at(-1)} ${w}`.trim(); if (g.measureText(next).width > 1060) lines.push(w); else lines[lines.length - 1] = next }
+  lines.slice(0, 6).forEach((l, i) => g.fillText(l, 70, 240 + i * 62))
+  g.fillStyle = '#6b6459'; g.font = '22px ui-sans-serif, system-ui'
+  g.fillText(d.readable ? `${captor} clerks can read it.` : `${captor} clerks are still working on it.`, 70, 560)
+  g.textAlign = 'right'; g.fillStyle = '#1e1c1a'; g.font = '600 24px ui-sans-serif, system-ui'; g.fillText(`HARKARA · ${id}`, 1130, 560)
+  c.toBlob(b => {
+    const file = new File([b!], `harkara-${id}-${lid}.png`, { type: 'image/png' })
+    if (navigator.canShare?.({ files: [file] })) navigator.share({ files: [file] }).catch(() => {})
+    else { const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = file.name; a.click() }
+  })
+}
+
 // ---- loop
 let last = performance.now()
 function loop(now: number) {
   requestAnimationFrame(loop) // first, so one bad frame can't stop playback
-  const loaded = watches.length * TPW - 1
+  const loaded = end ? TOTAL : watches.length * TPW - 1
   if (playing && t < loaded) t = Math.min(t + ((now - last) / 1000) * 10 * speed, loaded) // a linked moment may be ahead of the stream: wait
   last = now
-  if (playing && t >= TOTAL - 1) setPlaying(false)
+  if (playing && t >= TOTAL) setPlaying(false)
   scrub.value = String(Math.floor(t))
   $('clock').textContent = `Watch ${Math.min(manifest.watches, Math.floor(t / TPW) + 1)}/${manifest.watches}`
   draw(); feed()
