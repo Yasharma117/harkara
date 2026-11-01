@@ -25,7 +25,14 @@
   .item.big { background: #fff; box-shadow: 0 0 0 1px var(--line); }
   .mono { font-family: ui-monospace, Menlo, monospace; letter-spacing: .04em; }
   footer { position: relative; padding: 10px 14px 14px; border-top: 1px solid var(--line); }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .track { flex: 1; }
+  #prev, #next { font-size: 16px; line-height: 1; padding: 4px 9px; }
   #scrub { width: 100%; }
+  #tabs { margin: 8px 0 4px; display: flex; gap: 6px; }
+  .card { cursor: pointer; }
+  .card[aria-current="true"] { box-shadow: 0 0 0 2px var(--ink); }
+  .fate { font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: .06em; }
   #marks { position: relative; height: 10px; margin: 0 7px; }
   #marks i { position: absolute; top: 0; width: 3px; height: 10px; border-radius: 1px; cursor: pointer; }
   .legend { color: var(--muted); font-size: 12px; margin-top: 4px; }
@@ -43,10 +50,9 @@
   <span id="belief-err"></span>
 </header>
 <main id="stage"><canvas id="c"></canvas></main>
-<aside><div id="houses"></div><div id="feed" aria-live="off"></div></aside>
+<aside><div id="houses"></div><div role="group" aria-label="Panel" id="tabs"></div><div id="feed" aria-live="off"></div><div id="mail" hidden></div></aside>
 <footer>
-  <div id="marks"></div>
-  <input id="scrub" type="range" min="0" value="0" aria-label="Timeline" />
+  <div class="row"><button id="prev" title="Previous mark" aria-label="Previous mark">◀</button><div class="track"><div id="marks"></div><input id="scrub" type="range" min="0" value="0" aria-label="Timeline" /></div><button id="next" title="Next big moment" aria-label="Next big moment">▶</button><button id="copy">Copy link to this moment</button></div>
   <div class="legend">Marks: <b style="color:#c0392b">interception</b> · <b style="color:#2e3550">readable decode</b> · <b style="color:#4e7a5a">truce</b> · <b style="color:#888">rout</b>. Ghost shapes in belief view are where that general thinks units are; the line points to the truth.</div>
 </footer>
 <script type="module" src="./main.ts"></script>

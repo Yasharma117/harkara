@@ -6,22 +6,26 @@ const HOUSES = ['rhino', 'kite', 'orchid', 'tiger']
 const $ = (id: string) => document.getElementById(id)!
 const params = new URLSearchParams(location.search)
 const index: { id: string; winner: string }[] = await (await fetch('replay/index.json')).json()
-const id = index.find(b => `#${b.id}` === location.hash)?.id ?? index[0].id
+// #<battle>@<tick> is a link to one moment (artifact URLs keep only the hash)
+const [hashId, hashT] = location.hash.slice(1).split('@')
+const id = index.find(b => b.id === hashId)?.id ?? index[0].id
 const get = (f: string) => fetch(`replay/${id}/${f}`).then(r => r.json())
 const [manifest, init] = await Promise.all([get('manifest.json'), get('init.json')])
 const TPW: number = init.ticksPerWatch, FE: number = init.frameEvery, TOTAL = manifest.watches * TPW
 const nodes = new Map<string, any>(init.map.nodes.map((n: any) => [n.id, n]))
 const squadInfo: any[] = init.squads
 const watches: WatchFile[] = [], events: Ev[] = [], frames: WatchFile['frames'] = []
-const couriers = new Map<string, Ev>(), letters = new Map<string, Ev>()
+const couriers = new Map<string, Ev>(), letters = new Map<string, Ev>(), byLetter = new Map<string, Ev[]>() // fates + decodes per letter
+const marks: number[] = []
 let end: any = null
 
 // ---- controls
-let t = Number(params.get('t') ?? 0), playing = true, speed = 8, beliefOf: string | null = null
+let t = Number(hashT ?? params.get('t') ?? 0), playing = !hashT, speed = 8, beliefOf: string | null = null
 for (const b of index) $('battle').append(new Option(`${b.id} (${b.winner} won)`, b.id, false, b.id === id))
 $('battle').onchange = e => { location.hash = (e.target as HTMLSelectElement).value; location.reload() }
 const playBtn = $('play')
-const setPlaying = (p: boolean) => { playing = p; playBtn.textContent = p ? 'Pause' : 'Play' } // ponytail: link-to-moment lands in cycle 3 (timeline)
+const setPlaying = (p: boolean) => { playing = p; playBtn.textContent = p ? 'Pause' : 'Play' }
+setPlaying(playing)
 playBtn.onclick = () => setPlaying(!playing)
 const group = (el: string, opts: [string, string | number | null][], pick: (v: any) => void, init: any) => {
   for (const [label, v] of opts) {
@@ -46,6 +50,22 @@ group('beliefs', [['Truth', null], ...HOUSES.map(h => [h[0].toUpperCase() + h.sl
 const scrub = $('scrub') as HTMLInputElement
 scrub.max = String(TOTAL - 1)
 scrub.oninput = () => { t = Number(scrub.value); setPlaying(false) }
+const jump = (to: number) => { t = Math.max(0, to - 30); setPlaying(false) }
+$('next').onclick = () => { const m = marks.filter(m => m - 30 > t + 1).sort((a, b) => a - b)[0]; if (m != null) jump(m) }
+$('prev').onclick = () => { const m = marks.filter(m => m - 30 < t - 1).sort((a, b) => b - a)[0]; jump(m ?? 30) }
+$('copy').onclick = async () => {
+  const url = `${location.href.split('#')[0]}#${id}@${Math.floor(t)}`
+  history.replaceState(null, '', url)
+  const ok = await navigator.clipboard?.writeText(url).then(() => true, () => false)
+  $('copy').textContent = ok ? 'Copied' : 'Link is in the address bar'
+  setTimeout(() => ($('copy').textContent = 'Copy link to this moment'), 2000)
+}
+addEventListener('hashchange', () => {
+  const [h, ht] = location.hash.slice(1).split('@')
+  if (h !== id) location.reload(); else if (ht) { t = Number(ht); setPlaying(false) }
+})
+let tab = 'feed', sel: string | null = null
+group('tabs', [['Feed', 'feed'], ['Mailbag', 'mail']], v => { tab = v; $('feed').hidden = v !== 'feed'; $('mail').hidden = v !== 'mail'; shown = -1 }, tab)
 document.onkeydown = e => { if (e.code === 'Space' && e.target === document.body) { e.preventDefault(); setPlaying(!playing) } }
 $('houses').innerHTML = init.houses.map((h: any) => `<div class="house"><span class="sw" style="background:${COLOR[h.id]}"></span><b>${h.name}</b><small>${h.id} · ${h.model}</small></div><div style="margin:0 0 6px 18px;color:#6b6459"><i>“${h.line}”</i></div>`).join('')
 
@@ -54,6 +74,7 @@ $('houses').innerHTML = init.houses.map((h: any) => `<div class="house"><span cl
   for (let w = 1; w <= manifest.watches; w++) {
     const wf: WatchFile = await get(`watch${w}.json`)
     watches.push(wf); events.push(...wf.events); frames.push(...wf.frames)
+    for (const e of wf.events) if (e.letter && e.type !== 'courier' && e.type !== 'intel') (byLetter.get(e.letter) ?? byLetter.set(e.letter, []).get(e.letter)!).push(e)
     for (const e of wf.events) if (e.type === 'courier') { couriers.set(e.id, e); if (letters.has(e.letter)) letters.get(e.letter)!.double = true; else letters.set(e.letter, e) }
     addMarks(wf.events)
   }
@@ -66,10 +87,11 @@ function addMarks(evs: Ev[]) {
   for (const e of evs) {
     const c = e.type === 'decode' ? (e.readable ? '#2e3550' : null) : color[e.type]
     if (!c) continue
+    marks.push(e.t)
     const i = document.createElement('i')
     i.style.left = `${(e.t / TOTAL) * 100}%`; i.style.background = c
     i.title = `${e.type} · watch ${Math.floor(e.t / TPW) + 1}`
-    i.onclick = () => { t = Math.max(0, e.t - 30); setPlaying(false) }
+    i.onclick = () => jump(e.t)
     $('marks').append(i)
   }
 }
@@ -164,6 +186,15 @@ function draw() {
     ctx.fillStyle = COLOR[ev.house]; ctx.strokeStyle = ev.cipher ? '#1e1c1a' : '#fff'; ctx.lineWidth = 2 * S
     ctx.beginPath(); ctx.arc(X(x), Y(y), (ev.kind === 'report' ? 3 : 4.5) * S, 0, 7); ctx.fill(); ctx.stroke()
   }
+  // the letter picked in the mailbag: each rider's track so far (riders chase moving squads, so the planned path can be one node)
+  if (sel) for (const c of couriers.values()) if (c.letter === sel) {
+    ctx.beginPath()
+    let started = false
+    for (const f of frames) { if (f.t > t) break; const p = f.c.find(q => q[0] === c.id); if (p) { started ? ctx.lineTo(X(p[1]), Y(p[2])) : ctx.moveTo(X(p[1]), Y(p[2])); started = true } }
+    ctx.lineJoin = ctx.lineCap = 'round'
+    ctx.strokeStyle = '#1e1c1a'; ctx.lineWidth = 8 * S; ctx.stroke() // ink outline so it stands off the roads
+    ctx.strokeStyle = COLOR[c.house]; ctx.lineWidth = 4.5 * S; ctx.stroke()
+  }
   // squads
   ctx.font = `bold ${8 * S}px ui-sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
   squadInfo.forEach((s, i) => {
@@ -233,7 +264,31 @@ function feed() {
   shown = n
   const out: string[] = []
   for (let i = n - 1; i >= 0 && out.length < 80; i--) { const l = line(events[i]); if (l) out.push(l) }
-  $('feed').innerHTML = out.join('')
+  if (tab === 'feed') $('feed').innerHTML = out.join('')
+  else mailbag()
+}
+
+// ---- mailbag: every letter sent so far, its fate as of now (no spoilers), what the captor has decoded
+const FATE: Record<string, [string, string]> = { delivered: ['delivered', '#4e7a5a'], caught: ['caught', '#c0392b'], killed: ['rider shot', '#c0392b'], lost: ['lost', '#888'] }
+function mailbag() {
+  const out: string[] = []
+  for (const L of [...letters.values()].reverse()) {
+    if (L.t > t || L.kind === 'report') continue // ponytail: reports hidden; they outnumber orders 3:1
+    const evs = (byLetter.get(L.letter) ?? []).filter(e => e.t <= t)
+    const fates = evs.filter(e => FATE[e.type]).map(e => `<span class="fate" style="color:${FATE[e.type][1]}">${e.type === 'delivered' && e.t === L.depart ? 'handed over in camp' : FATE[e.type][0]}${e.by ? ` by ${name(e.by)}` : ''}${e.why ? `: ${e.why}` : ''}</span>`)
+    const riders = L.double ? 2 : 1
+    if (fates.length < riders) fates.push(`<span class="fate" style="color:var(--muted)">${L.depart > t ? 'enciphering' : 'in flight'}</span>`)
+    const dec = new Map(evs.filter(e => e.type === 'decode').map(e => [e.house, e]))
+    out.push(`<div class="item card" data-l="${L.letter}" aria-current="${sel === L.letter}" style="--c:${COLOR[L.house]}">${W(L)} <b>${L.house}</b> → ${name(L.to).replace(`${L.house} `, '')} · ${L.kind === 'decoy' ? 'decoy' : L.cipher ? 'ciphered' : 'plain'}${riders > 1 ? ' · two riders' : ''}<br>${fates.join(' · ')}<br><span class="mono">${L.plain}</span>${[...dec.values()].map(d => `<br><small>${d.house} reads${d.readable ? '' : ' so far'}:</small> <span class="mono">${d.text}</span>`).join('')}</div>`)
+  }
+  $('mail').innerHTML = out.join('') || '<div class="item">No letters yet.</div>'
+}
+$('mail').onclick = e => {
+  const c = (e.target as HTMLElement).closest<HTMLElement>('.card')
+  if (!c) return
+  sel = sel === c.dataset.l ? null : c.dataset.l!
+  if (sel) { t = letters.get(sel)!.t; setPlaying(true) }
+  shown = -1
 }
 
 // ---- loop
@@ -241,7 +296,7 @@ let last = performance.now()
 function loop(now: number) {
   requestAnimationFrame(loop) // first, so one bad frame can't stop playback
   const loaded = watches.length * TPW - 1
-  if (playing) t = Math.min(t + ((now - last) / 1000) * 10 * speed, loaded)
+  if (playing && t < loaded) t = Math.min(t + ((now - last) / 1000) * 10 * speed, loaded) // a linked moment may be ahead of the stream: wait
   last = now
   if (playing && t >= TOTAL - 1) setPlaying(false)
   scrub.value = String(Math.floor(t))
