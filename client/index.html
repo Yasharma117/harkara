@@ -18,7 +18,13 @@
   main { position: relative; min-height: 0; }
   canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
   aside { grid-row: 2 / 4; grid-column: 2; border-left: 1px solid var(--line); overflow-y: auto; padding: 8px 12px; }
-  .house { display: flex; gap: 8px; align-items: baseline; margin: 2px 0; }
+  .house { display: flex; gap: 10px; align-items: center; margin: 4px 0 8px; }
+  .house i { color: var(--muted); }
+  .hname { display: flex; gap: 6px; align-items: center; }
+  .portrait { width: 40px; height: 60px; object-fit: cover; border-radius: 4px; flex: none; box-shadow: 0 0 0 1px var(--line); }
+  .emb { width: 22px; height: 16px; flex: none; background: var(--c); -webkit-mask: var(--m) center / contain no-repeat; mask: var(--m) center / contain no-repeat; }
+  .seal { float: right; width: 30px; margin: 0 0 4px 6px; }
+  body { background-size: 512px; }
   .sw { width: 10px; height: 10px; border-radius: 2px; flex: none; }
   .item { padding: 4px 8px 4px 22px; margin: 6px 0; background: #fff8ec; border-radius: 6px; position: relative; }
   .item::before { content: ''; position: absolute; left: 8px; top: 10px; width: 8px; height: 8px; border-radius: 50%; background: var(--c, #999); }

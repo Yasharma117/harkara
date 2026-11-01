@@ -67,7 +67,12 @@ addEventListener('hashchange', () => {
 let tab = 'feed', sel: string | null = null
 group('tabs', [['Feed', 'feed'], ['Mailbag', 'mail']], v => { tab = v; $('feed').hidden = v !== 'feed'; $('mail').hidden = v !== 'mail'; shown = -1 }, tab)
 document.onkeydown = e => { if (e.code === 'Space' && e.target === document.body) { e.preventDefault(); setPlaying(!playing) } }
-$('houses').innerHTML = init.houses.map((h: any) => `<div class="house"><span class="sw" style="background:${COLOR[h.id]}"></span><b>${h.name}</b><small>${h.id} · ${h.model}</small></div><div style="margin:0 0 6px 18px;color:#6b6459"><i>“${h.line}”</i></div>`).join('')
+// batch-3 art when present (npm run assets); flat swatches otherwise
+const art: Record<string, unknown> = await fetch('art/art.json').then(r => (r.ok ? r.json() : {})).catch(() => ({}))
+const A = (n: string) => (art[n] ? `art/${n}.webp` : '')
+if (A('paper-grain')) document.body.style.backgroundImage = `linear-gradient(#f2e9d8b3, #f2e9d8b3), url(${A('paper-grain')})` // softened: the grain, not the tile
+const emblem = (h: string) => A(`emblem-${h}`) ? `<span class="emb" style="--c:${COLOR[h]};--m:url(${A(`emblem-${h}`)})"></span>` : `<span class="sw" style="background:${COLOR[h]}"></span>`
+$('houses').innerHTML = init.houses.map((h: any) => `<div class="house">${A(`portrait-${h.id}`) ? `<img class="portrait" src="${A(`portrait-${h.id}`)}" alt="">` : ''}<div><div class="hname">${emblem(h.id)}<b>${h.name}</b><small>${h.id} · ${h.model}</small></div><i>“${h.line}”</i></div></div>`).join('')
 
 // ---- streaming load: playback starts after watch 1
 ;(async () => {
@@ -180,6 +185,7 @@ function draw() {
         return { id: cid, house: ev.house, kind: ev.kind, x, y, path: ps.slice(j + 1) }
       }),
       flashes,
+      smokes: events.filter(e => e.type === 'smoke' && e.t <= t && t - e.t < 300).map(e => ({ ...nodes.get(`${e.house}-camp`), age: (t - e.t) / 300 })),
       ghosts,
       shot: director(t),
     }, performance.now() / 1000)
@@ -321,7 +327,8 @@ function mailbag() {
     if (fates.length < riders) fates.push(`<span class="fate" style="color:var(--muted)">${L.depart > t ? 'enciphering' : 'in flight'}</span>`)
     const dec = new Map(evs.filter(e => e.type === 'decode').map(e => [e.house, e]))
     const last = [...dec.values()].pop()
-    out.push(`<div class="item card" data-l="${L.letter}" aria-current="${sel === L.letter}" style="--c:${COLOR[L.house]}">${W(L)} <b>${L.house}</b> → ${name(L.to).replace(`${L.house} `, '')} · ${L.kind === 'decoy' ? 'decoy' : L.cipher ? 'ciphered' : 'plain'}${riders > 1 ? ' · two riders' : ''}<br>${fates.join(' · ')}<br><span class="mono">${L.plain}</span>${[...dec.values()].map(d => `<br><small>${d.house} reads${d.readable ? '' : ' so far'}:</small> <span class="mono">${d.text}</span>`).join('')}${last ? `<br><button class="dispatch" data-h="${last.house}">Save dispatch card</button>` : ''}</div>`)
+    const seal = L.cipher && A('seal-intact') ? `<img class="seal" src="${A([...dec.values()].some(d => d.readable) ? 'seal-broken' : 'seal-intact')}" alt="${[...dec.values()].some(d => d.readable) ? 'cipher broken' : 'sealed'}">` : ''
+    out.push(`<div class="item card" data-l="${L.letter}" aria-current="${sel === L.letter}" style="--c:${COLOR[L.house]}">${seal}${W(L)} <b>${L.house}</b> → ${name(L.to).replace(`${L.house} `, '')} · ${L.kind === 'decoy' ? 'decoy' : L.cipher ? 'ciphered' : 'plain'}${riders > 1 ? ' · two riders' : ''}<br>${fates.join(' · ')}<br><span class="mono">${L.plain}</span>${[...dec.values()].map(d => `<br><small>${d.house} reads${d.readable ? '' : ' so far'}:</small> <span class="mono">${d.text}</span>`).join('')}${last ? `<br><button class="dispatch" data-h="${last.house}">Save dispatch card</button>` : ''}</div>`)
   }
   $('mail').innerHTML = out.join('') || '<div class="item">No letters yet.</div>'
 }
@@ -336,13 +343,24 @@ $('mail').onclick = e => {
   shown = -1
 }
 
+const imgs: Record<string, HTMLImageElement> = {}
+for (const [k, n] of [['paper', 'paper-letter'], ['intact', 'seal-intact'], ['broken', 'seal-broken'], ...HOUSES.map(h => [`emblem-${h}`, `emblem-${h}`])]) if (A(n)) { const i = new Image(); i.src = A(n); imgs[k] = i }
 // ---- dispatch card: an intercepted letter as a share image, decoded as far as the captor has got by now
 function dispatchCard(lid: string, captor: string) {
   const L = letters.get(lid)!, d = byLetter.get(lid)!.filter(e => e.type === 'decode' && e.house === captor && e.t <= t).pop()!
   const c = document.createElement('canvas'); c.width = 1200; c.height = 630
   const g = c.getContext('2d')!
   g.fillStyle = '#f2e9d8'; g.fillRect(0, 0, 1200, 630)
+  if (imgs.paper) g.drawImage(imgs.paper, -50, -300, 1300, 1230) // the letter sheet, cropped to the card
   g.fillStyle = COLOR[L.house]; g.fillRect(0, 0, 1200, 14)
+  const seal = d.readable ? imgs.broken : imgs.intact
+  if (seal) g.drawImage(seal, 1000, 40, 150, 150 * seal.height / seal.width)
+  const em = imgs[`emblem-${L.house}`]
+  if (em) { // white silhouette → house colour
+    const o = document.createElement('canvas'); o.width = em.width; o.height = em.height
+    const og = o.getContext('2d')!; og.drawImage(em, 0, 0); og.globalCompositeOperation = 'source-in'; og.fillStyle = COLOR[L.house]; og.fillRect(0, 0, o.width, o.height)
+    g.globalAlpha = 0.18; g.drawImage(o, 760, 300, 400, 400 * em.height / em.width); g.globalAlpha = 1
+  }
   g.fillStyle = '#1e1c1a'; g.font = '600 28px ui-sans-serif, system-ui'
   g.fillText(`INTERCEPTED · WATCH ${Math.floor(d.t / TPW) + 1}`, 70, 90)
   g.fillStyle = '#6b6459'; g.font = '24px ui-sans-serif, system-ui'

@@ -3,13 +3,14 @@
 import * as THREE from 'three/webgpu'
 import { texture, uv, vec3, dot, mix, smoothstep, instancedBufferAttribute, float } from 'three/tsl'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-import { mapSvg } from './mapsvg.ts'
+import { mapSvg, RIVER } from './mapsvg.ts'
 
 export interface Snap {
   t: number
   squads: { id: string; house: string; type: string; x: number; y: number; str: number; flags: number }[]
   couriers: { id: string; house: string; kind: string; x: number; y: number; path: { x: number; y: number }[] }[]
   flashes: { type: string; x: number; y: number; age: number }[]
+  smokes: { x: number; y: number; age: number }[] // smoke signals lit at a camp, age 0→1
   ghosts: { house: string; type: string; x: number; y: number; tx: number; ty: number }[] // belief view: where a general thinks units are
   shot: { x: number; y: number } | null // the camera director's pick, used when nobody is driving
 }
@@ -58,11 +59,14 @@ export async function createDiorama(host: HTMLElement, init: any) {
 
   // sky + painted hill backdrops (north side; the camera stays south so they always read)
   scene.background = art['sky-dawn'] ? await tex('sky-dawn', () => document.createElement('canvas')) : new THREE.Color('#dfe5df')
-  for (const [name, z, w, y] of [['hills-far', -1500, 4200, 250], ['hills-mid', -1050, 3000, 120]] as const) {
+  for (const [name, z, w, y] of [['hills-far', -1650, 4600, 120], ['hills-mid', -1100, 3200, 0]] as const) {
     if (!art[name]) continue
     const t = await tex(name, () => document.createElement('canvas'))
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, (w * art[name].h) / art[name].w), new THREE.MeshBasicNodeMaterial({ map: t, transparent: true, fog: false }))
-    m.position.set(0, y, z); scene.add(m)
+    const bm = new THREE.MeshBasicNodeMaterial({ transparent: true, fog: false })
+    bm.colorNode = texture(t, uv()).rgb
+    bm.opacityNode = texture(t, uv()).a.mul(smoothstep(0, 0.18, uv().y)) // feather the cut-off bottom edge into the field
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, (w * art[name].h) / art[name].w), bm)
+    m.position.set(0, (w * art[name].h) / art[name].w / 2 - 30 + y, z); scene.add(m) // stand on the field
   }
 
   // terrain
@@ -72,12 +76,35 @@ export async function createDiorama(host: HTMLElement, init: any) {
   const gp = ground.attributes.position
   for (let i = 0; i < gp.count; i++) gp.setY(i, height(gp.getX(i) + 500, gp.getZ(i) + 500))
   ground.computeVertexNormals()
-  const gtex = await tex('map-painted', svgImg)
+  // until batch 4's painted map exists, paint the plan with the batch-1 tiles
+  const tiled = async () => {
+    const [grass, path, sand, water] = await Promise.all(['tex-grass', 'tex-path', 'tex-sand', 'tex-water'].map(n => loader.loadAsync(`art/${n}.webp`).then(t => t.image)))
+    const c = document.createElement('canvas'); c.width = c.height = 2048
+    const g = c.getContext('2d')!; g.scale(2.048, 2.048)
+    const pat = (im: any, k: number) => { const p = g.createPattern(im, 'repeat')!; p.setTransform(new DOMMatrix().scale(k)); return p }
+    g.fillStyle = pat(grass, 0.3); g.fillRect(0, 0, 1000, 1000)
+    for (const n of hills) { const r = g.createRadialGradient(n.x, n.y, 0, n.x, n.y, 170); r.addColorStop(0, 'rgba(28,58,40,.5)'); r.addColorStop(1, 'rgba(28,58,40,0)'); g.fillStyle = r; g.fillRect(n.x - 170, n.y - 170, 340, 340) }
+    const river = new Path2D(RIVER)
+    g.lineWidth = 34; g.strokeStyle = pat(sand, 0.25); g.stroke(river); g.fillStyle = pat(water, 0.3); g.fill(river)
+    const at = new Map(init.map.nodes.map((n: any) => [n.id, n]))
+    g.lineCap = 'round'; g.strokeStyle = pat(path, 0.2)
+    for (const e of init.map.edges) if (e.kind === 'road' || e.kind === 'hill') { const a: any = at.get(e.a), b: any = at.get(e.b); g.lineWidth = e.kind === 'road' ? 12 : 7; g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke() }
+    g.fillStyle = pat(path, 0.2)
+    for (const n of init.map.nodes) if (n.id.endsWith('-camp') || n.id.endsWith('village')) { g.beginPath(); g.arc(n.x, n.y, n.id.endsWith('-camp') ? 50 : 34, 0, 7); g.fill() }
+    return c
+  }
+  const gtex = await tex('map-painted', art['tex-grass'] ? tiled : svgImg)
   // UVs: the 1000×1000 map sits inside the 1100 plane
   const guv = ground.attributes.uv
   for (let i = 0; i < guv.count; i++) { guv.setX(i, (gp.getX(i) + 500) / 1000); guv.setY(i, 1 - (gp.getZ(i) + 500) / 1000) }
-  gtex.wrapS = gtex.wrapT = THREE.ClampToEdgeWrapping
+  gtex.wrapS = gtex.wrapT = THREE.MirroredRepeatWrapping // the 50-pace rim beyond the map mirrors it instead of smearing
   scene.add(new THREE.Mesh(ground, new THREE.MeshStandardNodeMaterial({ map: gtex, roughness: 1 })))
+  // a wide field under the board so the diorama never floats over nothing
+  if (art['tex-grass']) {
+    const gt = await tex('tex-grass', () => document.createElement('canvas')); gt.wrapS = gt.wrapT = THREE.RepeatWrapping; gt.repeat.set(17, 17)
+    const field = new THREE.Mesh(new THREE.PlaneGeometry(3400, 3400), new THREE.MeshStandardNodeMaterial({ map: gt, roughness: 1, color: '#c9d1b8' }))
+    field.rotateX(-Math.PI / 2); field.position.y = -16; scene.add(field) // below the river bed (-8)
+  }
 
   // ---- sprite batches: one InstancedMesh per sprite, tinted per instance, billboarded on the CPU each frame
   const placeholder = (draw: (g: CanvasRenderingContext2D) => void) => () => { const c = document.createElement('canvas'); c.width = c.height = 128; draw(c.getContext('2d')!); return c }
@@ -102,7 +129,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
     const s = texture(t, uv())
     if (opts.tinted) {
       // near-white cloth takes the house colour; skin, wood and metal stay as painted
-      const cloth = smoothstep(0.62, 0.9, dot(s.rgb, vec3(0.3, 0.59, 0.11)))
+      const cloth = smoothstep(0.3, 0.65, dot(s.rgb, vec3(0.3, 0.59, 0.11))) // linear-space luminance: painted near-white ≈ 0.7+
       mat.colorNode = mix(s.rgb, s.rgb.mul(instancedBufferAttribute(tint)).mul(1.25), cloth)
     } else mat.colorNode = s.rgb
     mat.opacityNode = s.a.mul(float(opts.opacity ?? 1))
@@ -116,6 +143,11 @@ export async function createDiorama(host: HTMLElement, init: any) {
 
   const units: Record<string, Awaited<ReturnType<typeof batch>>> = {}
   for (const [k, [name, fb]] of Object.entries(SPRITES)) units[k] = await batch(name, fb, k === 'harkara' ? 80 : init.squads.length * PER_SQUAD, { tinted: true })
+  // a house pennant over each squad, dust behind riders, smoke columns for signals (art only; no placeholders)
+  const none = placeholder(() => {})
+  const flag = art['flag-pennant'] ? await batch('flag-pennant', none, init.squads.length, { tinted: true }) : null
+  const dust = art['dust-puff'] ? await batch('dust-puff', none, 80, { tinted: false, opacity: 0.55 }) : null
+  const smoke = art['smoke-column'] ? await batch('smoke-column', none, 4, { tinted: false, opacity: 0.85 }) : null
   // ghosts: the same sprites, faded and greyed, one per squad, with a dotted ink line to the truth
   const ghostB: Record<string, Awaited<ReturnType<typeof batch>>> = {}
   for (const k of ['inf', 'arch', 'cav', 'ele']) ghostB[k] = await batch('', SPRITES[k][1], init.squads.length, { tinted: true, opacity: 0.45 }, units[k].t)
@@ -125,10 +157,14 @@ export async function createDiorama(host: HTMLElement, init: any) {
 
   // props: trees on the hills, huts at the villages, a ferry, rocks
   const rnd = (() => { let s = 7; return () => ((s = (s * 16807) % 2147483647) / 2147483647) })()
-  const propPlaces: Record<string, { x: number; y: number; s: number }[]> = { pine: [], bamboo: [], hut: [], ferry: [], rock: [] }
+  const propPlaces: Record<string, { x: number; y: number; s: number }[]> = { pine: [], bamboo: [], hut: [], ferry: [], rock: [], areca: [], ford: [], rootbridge: [] }
   for (const n of hills) for (let i = 0; i < 16; i++) { const a = rnd() * 6.28, r = 40 + rnd() * 120; propPlaces[i % 3 ? 'pine' : 'bamboo'].push({ x: n.x + Math.cos(a) * r, y: n.y + Math.sin(a) * r, s: 26 + rnd() * 18 }) }
   for (const n of init.map.nodes.filter((n: any) => n.id.endsWith('village'))) for (const [dx, dy] of [[-20, -10], [15, -14], [0, 12], [24, 10]]) propPlaces.hut.push({ x: n.x + dx, y: n.y + dy, s: 22 })
   const fer = init.map.nodes.find((n: any) => n.id === 'ferry'); propPlaces.ferry.push({ x: fer.x, y: fer.y, s: 24 })
+  for (const n of init.map.nodes.filter((n: any) => n.id.endsWith('village'))) for (let i = 0; i < 4; i++) { const a = rnd() * 6.28; propPlaces.areca.push({ x: n.x + Math.cos(a) * (55 + rnd() * 30), y: n.y + Math.sin(a) * (40 + rnd() * 20), s: 44 + rnd() * 14 }) }
+  for (let i = 0; i < 14; i++) propPlaces.areca.push({ x: 80 + rnd() * 840, y: rnd() < 0.5 ? 250 + rnd() * 110 : 640 + rnd() * 110, s: 40 + rnd() * 14 })
+  for (const f of init.map.fords) { const n = init.map.nodes.find((m: any) => m.id === f); propPlaces.ford.push({ x: n.x, y: n.y, s: 26 }) }
+  for (const id of ['gorge', 'sw-hill']) { const n = init.map.nodes.find((m: any) => m.id === id); propPlaces.rootbridge.push({ x: n.x + 20, y: n.y + 60, s: 60 }) }
   for (let i = 0; i < 18; i++) propPlaces.rock.push({ x: 60 + rnd() * 880, y: rnd() < 0.5 ? 380 - rnd() * 300 : 620 + rnd() * 300, s: 8 + rnd() * 8 })
   const PROP_FB: Record<string, () => HTMLCanvasElement> = {
     pine: placeholder(g => { g.fillStyle = '#4e7a5a'; g.beginPath(); g.moveTo(64, 4); g.lineTo(104, 112); g.lineTo(24, 112); g.closePath(); g.fill(); g.fillStyle = '#5a4630'; g.fillRect(58, 110, 12, 18) }),
@@ -138,11 +174,11 @@ export async function createDiorama(host: HTMLElement, init: any) {
     rock: placeholder(g => { g.fillStyle = '#7e8c78'; g.beginPath(); g.ellipse(64, 96, 50, 30, 0, 0, 7); g.fill() }),
   }
   const props: { b: Awaited<ReturnType<typeof batch>>; at: { x: number; y: number; s: number }[] }[] = []
-  for (const [k, at] of Object.entries(propPlaces)) { const b = await batch(`prop-${k}`, PROP_FB[k], at.length, { tinted: false }); b.mesh.count = at.length; props.push({ b, at }) }
+  for (const [k, at] of Object.entries(propPlaces)) { if (!PROP_FB[k] && !art[`prop-${k}`]) continue; const b = await batch(`prop-${k}`, PROP_FB[k] ?? placeholder(() => {}), at.length, { tinted: false }); b.mesh.count = at.length; props.push({ b, at }) }
 
   // mist: soft cards drifting over the misty places
   const mistTex = new THREE.CanvasTexture(placeholder(g => { const r = g.createRadialGradient(64, 64, 0, 64, 64, 64); r.addColorStop(0, 'rgba(255,255,255,.75)'); r.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0, 0, 128, 128) })())
-  const mistMat = new THREE.MeshBasicNodeMaterial({ map: mistTex, transparent: true, depthWrite: false, opacity: 0.42 })
+  const mistMat = new THREE.MeshBasicNodeMaterial({ map: mistTex, transparent: true, depthWrite: false, opacity: 0.28 })
   const mist = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), mistMat, hills.length * 4)
   mist.frustumCulled = false; scene.add(mist)
   const mistAt = hills.flatMap((n: any) => [0, 1, 2, 3].map(i => ({ x: n.x + (i - 1.5) * 50, y: n.y + ((i * 37) % 60) - 30, s: 220 + i * 30, ph: i * 1.7 })))
@@ -163,7 +199,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
   }
 
   // ---- camera: the director drives unless the viewer has touched it in the last 20 s; following a rider overrides both
-  const OVER = { t: new THREE.Vector3(0, 0, 40), r: 1600, polar: 0.86, az: 0 }
+  const OVER = { t: new THREE.Vector3(0, 0, -20), r: 1500, polar: 1.0, az: 0 } // low enough to see the painted horizon
   const want = { t: OVER.t.clone(), r: OVER.r, polar: OVER.polar, az: OVER.az }
   const sph = new THREE.Spherical()
   let userAt = -1e9, follow: { id: string; seen: boolean; goneAt: number } | null = null, riderIds: string[] = []
@@ -221,6 +257,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
       const yaw = Math.atan2(camera.position.x - controls.target.x, camera.position.z - controls.target.z)
       // soldiers in loose 3×3 blocks, fewer as the squad loses strength
       const n: Record<string, number> = { inf: 0, arch: 0, cav: 0, ele: 0 }
+      let fl = 0
       for (const q of s.squads) {
         if (q.flags & 2) continue
         const b = units[q.type], prev = lastX.get(q.id) ?? q.x, moving = Math.abs(q.x - prev) > 0.01
@@ -235,7 +272,9 @@ export async function createDiorama(host: HTMLElement, init: any) {
           place(b.mesh, n[q.type], q.x + gx * sp + (gy % 2) * 3, q.y + gy * sp * 0.8, hgt * b.aspect * flip, hgt, yaw, moving ? -0.08 * flip : 0, bob)
           b.tint.setXYZ(n[q.type]++, c.r, c.g, c.b)
         }
+        if (flag) { const fh = q.type === 'ele' ? 62 : 44; place(flag.mesh, fl, q.x - 6, q.y - (q.type === 'ele' ? 26 : 14), fh * flag.aspect * flip, fh, yaw); flag.tint.setXYZ(fl++, c.r, c.g, c.b) }
       }
+      if (flag) { flag.mesh.count = fl; flag.mesh.instanceMatrix.needsUpdate = true; flag.tint.needsUpdate = true }
       for (const [k, b] of Object.entries(units)) if (k !== 'harkara') { b.mesh.count = n[k]; b.mesh.instanceMatrix.needsUpdate = true; b.tint.needsUpdate = true }
       // couriers: a runner and a line of ink ahead of it
       const h = units.harkara, live = new Set<string>()
@@ -244,6 +283,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
         const flip = c.x >= prev ? 1 : -1
         place(h.mesh, i, c.x, c.y, SIZE.harkara * h.aspect * flip * (c.kind === 'report' ? 0.8 : 1), SIZE.harkara * (c.kind === 'report' ? 0.8 : 1), yaw, -0.15 * flip, Math.abs(Math.sin(time * 14 + i)) * 2)
         const col = HOUSE[c.house]; h.tint.setXYZ(i, col.r, col.g, col.b)
+        if (dust) place(dust.mesh, i, c.x - flip * 10, c.y + 1, 16 * dust.aspect * flip * (0.8 + 0.3 * Math.abs(Math.sin(time * 5 + i))), 16, yaw)
         if (c.kind === 'report') return
         live.add(c.id)
         let line = routes.get(c.id)
@@ -254,6 +294,8 @@ export async function createDiorama(host: HTMLElement, init: any) {
         line.geometry.setFromPoints(pts.length > 1 ? pts : [W(c.x, c.y, 1.5), W(c.x, c.y, 1.5)])
       })
       riderIds = s.couriers.slice(0, 80).map(c => c.id)
+      if (dust) { dust.mesh.count = Math.min(80, s.couriers.length); dust.mesh.instanceMatrix.needsUpdate = true }
+      if (smoke) { s.smokes.slice(0, 4).forEach((m, i) => { const sh = 90 + m.age * 70; place(smoke.mesh, i, m.x + 30, m.y - 30, sh * smoke.aspect, sh, yaw) }); smoke.mesh.count = Math.min(4, s.smokes.length); smoke.mesh.instanceMatrix.needsUpdate = true }
       h.mesh.count = Math.min(80, s.couriers.length); h.mesh.instanceMatrix.needsUpdate = true; h.tint.needsUpdate = true
       for (const [id, l] of routes) if (!live.has(id)) { scene.remove(l); l.geometry.dispose(); routes.delete(id) }
       // belief ghosts + dotted lines to where the unit really is

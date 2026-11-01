@@ -2,6 +2,8 @@
 // 'paint' is the placeholder ground texture until map-painted.webp exists.
 import { NODES, EDGES, FORDS } from '../engine/map.ts'
 
+export const RIVER = 'M0 462 C 250 452, 420 474, 600 462 S 850 452, 1000 466 L1000 538 C 800 548, 620 528, 420 540 S 150 546, 0 536 Z'
+
 export function mapSvg(style: 'mask' | 'paint', size = 1024) {
   const m = style === 'mask'
   const c = m
@@ -20,6 +22,6 @@ export function mapSvg(style: 'mask' | 'paint', size = 1024) {
   const camps = NODES.filter(n => n.id.endsWith('-camp')).map(n => `<circle cx="${n.x}" cy="${n.y}" r="55" fill="${c.camp}"/>`)
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 1000 1000">
 <rect width="1000" height="1000" fill="${c.ground}"/>${hills.join('')}${camps.join('')}
-<path d="M0 462 C 250 452, 420 474, 600 462 S 850 452, 1000 466 L1000 538 C 800 548, 620 528, 420 540 S 150 546, 0 536 Z" fill="${c.river}"/>${sand}
+<path d="${RIVER}" fill="${c.river}"/>${sand}
 ${roads.join('')}${fords.join('')}<line x1="${ferry.x}" y1="420" x2="${ferry.x}" y2="580" stroke="${c.road}" stroke-width="4" stroke-dasharray="8 6"/>${villages.join('')}</svg>`
 }
