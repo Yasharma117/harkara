@@ -221,6 +221,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
   // rocks and bamboo where the river leaves the map, so the painted edge never shows as a line
   for (const ex of [6, 994]) for (const ey of [452, 470, 530, 548]) { propPlaces.rock.push({ x: ex + (rnd() - 0.5) * 20, y: ey, s: 14 + rnd() * 10 }); propPlaces.bamboo.push({ x: ex + (rnd() - 0.5) * 30, y: ey + (ey < 500 ? -18 : 18), s: 40 + rnd() * 16 }) }
   for (let i = 0; i < 18; i++) propPlaces.rock.push({ x: 60 + rnd() * 880, y: rnd() < 0.5 ? 380 - rnd() * 300 : 620 + rnd() * 300, s: 8 + rnd() * 8 })
+  if (art['map-painted']) for (const k of ['hut', 'ford', 'ferry']) propPlaces[k] = [] // the painting already has these
   const PROP_FB: Record<string, () => HTMLCanvasElement> = {
     pine: placeholder(g => { g.fillStyle = '#4e7a5a'; g.beginPath(); g.moveTo(64, 4); g.lineTo(104, 112); g.lineTo(24, 112); g.closePath(); g.fill(); g.fillStyle = '#5a4630'; g.fillRect(58, 110, 12, 18) }),
     bamboo: placeholder(g => { g.strokeStyle = '#8daa6b'; g.lineWidth = 7; for (const x of [44, 58, 72, 86]) { g.beginPath(); g.moveTo(x, 128); g.quadraticCurveTo(x - 10, 60, x + 8, 6); g.stroke() } }),
@@ -229,7 +230,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
     rock: placeholder(g => { g.fillStyle = '#7e8c78'; g.beginPath(); g.ellipse(64, 96, 50, 30, 0, 0, 7); g.fill() }),
   }
   const props: { b: Awaited<ReturnType<typeof batch>>; at: { x: number; y: number; s: number }[] }[] = []
-  for (const [k, at] of Object.entries(propPlaces)) { if (!PROP_FB[k] && !art[`prop-${k}`]) continue; const b = await batch(`prop-${k}`, PROP_FB[k] ?? placeholder(() => {}), at.length, { tinted: false }); b.mesh.count = at.length; props.push({ b, at }) }
+  for (const [k, at] of Object.entries(propPlaces)) { if (!at.length || (!PROP_FB[k] && !art[`prop-${k}`])) continue; const b = await batch(`prop-${k}`, PROP_FB[k] ?? placeholder(() => {}), at.length, { tinted: false }); b.mesh.count = at.length; props.push({ b, at }) }
 
   // mist: soft cards drifting over the misty places
   const mistTex = new THREE.CanvasTexture(placeholder(g => { const r = g.createRadialGradient(64, 64, 0, 64, 64, 64); r.addColorStop(0, 'rgba(255,255,255,.75)'); r.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0, 0, 128, 128) })())
