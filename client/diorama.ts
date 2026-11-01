@@ -35,12 +35,20 @@ export async function createDiorama(host: HTMLElement, init: any) {
   const hills = init.map.nodes.filter((n: any) => n.mist)
   const height = (x: number, y: number) => {
     let h = 0
-    for (const n of hills) h += 70 * Math.exp(-((x - n.x) ** 2 + (y - n.y) ** 2) / (2 * 110 ** 2))
-    const edge = Math.min(x, 1000 - x, y, 1000 - y)
-    h += Math.max(0, 30 - edge) * 0.6
+    for (const n of hills) h += 110 * Math.exp(-((x - n.x) ** 2 + (y - n.y) ** 2) / (2 * 115 ** 2))
     const river = Math.abs(y - 500)
     if (river < 60) h = h * (river / 60) - 8 * (1 - river / 60)
     return h
+  }
+  // beyond the map the valley walls rise into ridges, low where the river runs out east and west
+  const outer = (x: number, y: number) => {
+    const cx = Math.min(1000, Math.max(0, x)), cy = Math.min(1000, Math.max(0, y)), d = Math.hypot(x - cx, y - cy)
+    if (!d) return height(x, y) - 4 // under the board
+    const r = Math.abs(y - 500), open = THREE.MathUtils.smoothstep(r, 70, 340)
+    const wall = Math.min(420, d * 0.55) * (0.25 + 0.75 * open) + 30 * Math.sin(x * 0.013) * Math.cos(y * 0.011) * Math.min(1, d / 90)
+    // the river keeps going: its channel is carved in gradually with distance, so the map's edge meets the valley without a step
+    const bank = THREE.MathUtils.smoothstep(r, 30, 150 + d * 0.3), carve = (1 - bank) * THREE.MathUtils.smoothstep(d, 0, 140)
+    return THREE.MathUtils.lerp(height(cx, cy), -8, carve) + wall * bank
   }
   const W = (x: number, y: number, lift = 0) => new THREE.Vector3(x - 500, height(x, y) + lift, y - 500)
 
@@ -50,7 +58,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
   renderer.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%'
   host.append(renderer.domElement)
   const scene = new THREE.Scene()
-  scene.fog = new THREE.Fog('#e6e8df', 1900, 4200)
+  scene.fog = new THREE.Fog('#e6e8df', 1500, 3600)
   const camera = new THREE.PerspectiveCamera(34, 1, 5, 6000)
   camera.position.set(0, 1050, 1250)
   const controls = new OrbitControls(camera, renderer.domElement)
@@ -62,7 +70,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
 
   // sky + painted hill backdrops (north side; the camera stays south so they always read)
   scene.background = art['sky-dawn'] ? await tex('sky-dawn', () => document.createElement('canvas')) : new THREE.Color('#dfe5df')
-  for (const [name, z, w, y] of [['hills-far', -1650, 4600, 120], ['hills-mid', -1100, 3200, 0]] as const) {
+  for (const [name, z, w, y] of [['hills-far', -2500, 7600, 300], ['hills-mid', -2000, 5600, 260]] as const) {
     if (!art[name]) continue
     const t = await tex(name, () => document.createElement('canvas'))
     const bm = new THREE.MeshBasicNodeMaterial({ transparent: true, fog: false })
@@ -74,7 +82,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
 
   // terrain
   const svgImg = () => new Promise<HTMLImageElement>(res => { const i = new Image(); i.onload = () => res(i); i.src = URL.createObjectURL(new Blob([mapSvg('paint', 2048)], { type: 'image/svg+xml' })) })
-  const ground = new THREE.PlaneGeometry(1100, 1100, 160, 160)
+  const ground = new THREE.PlaneGeometry(1000, 1000, 160, 160)
   ground.rotateX(-Math.PI / 2)
   const gp = ground.attributes.position
   for (let i = 0; i < gp.count; i++) gp.setY(i, height(gp.getX(i) + 500, gp.getZ(i) + 500))
@@ -88,7 +96,9 @@ export async function createDiorama(host: HTMLElement, init: any) {
     g.fillStyle = pat(grass, 0.3); g.fillRect(0, 0, 1000, 1000)
     for (const n of hills) { const r = g.createRadialGradient(n.x, n.y, 0, n.x, n.y, 170); r.addColorStop(0, 'rgba(28,58,40,.5)'); r.addColorStop(1, 'rgba(28,58,40,0)'); g.fillStyle = r; g.fillRect(n.x - 170, n.y - 170, 340, 340) }
     const river = new Path2D(RIVER)
-    g.lineWidth = 34; g.strokeStyle = pat(sand, 0.25); g.stroke(river); g.fillStyle = pat(water, 0.3); g.fill(river)
+    // sand banks stop short of the map edge so the river meets the valley's water without a square corner
+    g.save(); g.beginPath(); g.rect(45, 0, 910, 1000); g.clip(); g.lineWidth = 34; g.strokeStyle = pat(sand, 0.25); g.stroke(river); g.restore()
+    g.fillStyle = pat(water, 0.3); g.fill(river)
     const at = new Map(init.map.nodes.map((n: any) => [n.id, n]))
     // painted light: big soft warm and cool patches so the grass isn't one even noise
     for (let i = 0; i < 26; i++) { const x = rnd() * 1000, y = rnd() * 1000, r = 90 + rnd() * 160, r2 = g.createRadialGradient(x, y, 0, x, y, r), warm = i % 2; r2.addColorStop(0, warm ? 'rgba(232,206,120,.22)' : 'rgba(20,48,40,.25)'); r2.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = r2; g.fillRect(x - r, y - r, 2 * r, 2 * r) }
@@ -105,16 +115,23 @@ export async function createDiorama(host: HTMLElement, init: any) {
     return c
   }
   const gtex = await tex('map-painted', art['tex-grass'] ? tiled : svgImg)
-  // UVs: the 1000×1000 map sits inside the 1100 plane
   const guv = ground.attributes.uv
   for (let i = 0; i < guv.count; i++) { guv.setX(i, (gp.getX(i) + 500) / 1000); guv.setY(i, 1 - (gp.getZ(i) + 500) / 1000) }
-  gtex.wrapS = gtex.wrapT = THREE.MirroredRepeatWrapping // the 50-pace rim beyond the map mirrors it instead of smearing
+  gtex.wrapS = gtex.wrapT = THREE.ClampToEdgeWrapping
   scene.add(new THREE.Mesh(ground, new THREE.MeshStandardNodeMaterial({ map: gtex, roughness: 1 })))
-  // a wide field under the board so the diorama never floats over nothing
+  // the valley around the map: ridges shaded darker and cooler with height, the river running out between them
   if (art['tex-grass']) {
-    const gt = await tex('tex-grass', () => document.createElement('canvas')); gt.wrapS = gt.wrapT = THREE.RepeatWrapping; gt.repeat.set(17, 17)
-    const field = new THREE.Mesh(new THREE.PlaneGeometry(3400, 3400), new THREE.MeshStandardNodeMaterial({ map: gt, roughness: 1, color: '#c9d1b8' }))
-    field.rotateX(-Math.PI / 2); field.position.y = -16; scene.add(field) // below the river bed (-8)
+    const gt = await tex('tex-grass', () => document.createElement('canvas')); gt.wrapS = gt.wrapT = THREE.RepeatWrapping; gt.repeat.set(26, 26)
+    const vg = new THREE.PlaneGeometry(5200, 5200, 200, 200); vg.rotateX(-Math.PI / 2)
+    const vp = vg.attributes.position, col = new Float32Array(vp.count * 3), low = new THREE.Color('#d9dcc0'), high = new THREE.Color('#5d7a6a'), cc = new THREE.Color()
+    for (let i = 0; i < vp.count; i++) { const h = outer(vp.getX(i) + 500, vp.getZ(i) + 500); vp.setY(i, h); cc.copy(low).lerp(high, Math.min(1, Math.max(0, h / 380))).toArray(col, i * 3) }
+    vg.setAttribute('color', new THREE.BufferAttribute(col, 3)); vg.computeVertexNormals()
+    scene.add(new THREE.Mesh(vg, new THREE.MeshStandardNodeMaterial({ map: gt, roughness: 1, vertexColors: true })))
+    if (art['tex-water']) for (const side of [-1, 1]) {
+      const wt = await tex('tex-water', () => document.createElement('canvas')); wt.wrapS = wt.wrapT = THREE.RepeatWrapping; wt.repeat.set(12, 1)
+      const w = new THREE.Mesh(new THREE.PlaneGeometry(2260, 80), new THREE.MeshStandardNodeMaterial({ map: wt, roughness: 0.6 }))
+      w.rotateX(-Math.PI / 2); w.position.set(side * (500 + 1130 - 60), -4, 0); scene.add(w) // overlaps the map's river by 60 paces
+    }
   }
 
   // ---- sprite batches: one InstancedMesh per sprite, tinted per instance, billboarded on the CPU each frame
@@ -132,18 +149,19 @@ export async function createDiorama(host: HTMLElement, init: any) {
     harkara: ['unit-harkara', figure(g => { g.strokeStyle = '#6b5a45'; g.lineWidth = 6; g.beginPath(); g.moveTo(40, 50); g.lineTo(88, 100); g.stroke() })],
   }
   const tintAttr = (n: number) => new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3)
-  async function batch(name: string, fallback: () => HTMLCanvasElement, count: number, opts: { tinted: boolean; opacity?: number }, t?: THREE.Texture) {
+  async function batch(name: string, fallback: () => HTMLCanvasElement, count: number, opts: { tinted: boolean; opacity?: number; solid?: boolean }, t?: THREE.Texture) {
     t ??= await tex(name, fallback)
     const geo = new THREE.PlaneGeometry(1, 1); geo.translate(0, 0.5, 0)
     const tint = tintAttr(count)
     const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: !opts.opacity })
     const s = texture(t, uv())
-    if (opts.tinted) {
+    if (opts.solid) mat.colorNode = vec3(1, 1, 1).mul(instancedBufferAttribute(tint)) // a flat house-colour silhouette (emblems)
+    else if (opts.tinted) {
       // near-white cloth takes the house colour; skin, wood and metal stay as painted
       // the whole figure takes the house colour, keeping the painted light and line (reads at broadcast distance)
       // tint the cloth and mid-tones, keep the painted darks (line work, shading) as they are
       const lum = dot(s.rgb, vec3(0.3, 0.59, 0.11))
-      mat.colorNode = mix(s.rgb, lum.mul(1.5).add(0.12).mul(instancedBufferAttribute(tint)), smoothstep(0.06, 0.4, lum).mul(0.85))
+      mat.colorNode = mix(s.rgb, lum.mul(1.5).add(0.12).mul(instancedBufferAttribute(tint)), smoothstep(0.06, 0.4, lum).mul(0.95))
     } else mat.colorNode = s.rgb
     mat.opacityNode = s.a.mul(float(opts.opacity ?? 1))
     mat.alphaTest = opts.opacity ? 0.05 : 0.35
@@ -162,8 +180,10 @@ export async function createDiorama(host: HTMLElement, init: any) {
   const outlines: Record<string, Awaited<ReturnType<typeof batch>>> = {}
   for (const hh of Object.keys(HOUSE)) if (art[`emblem-${hh}`]) {
     outlines[hh] = await batch(`emblem-${hh}`, none, init.squads.length, { tinted: true }) // drawn first, larger and near-black: the outline
-    banners[hh] = await batch(`emblem-${hh}`, none, init.squads.length, { tinted: true }, outlines[hh].t)
+    banners[hh] = await batch(`emblem-${hh}`, none, init.squads.length, { tinted: true, solid: true }, outlines[hh].t)
     banners[hh].aspect = outlines[hh].aspect
+    outlines[hh].mesh.renderOrder = 1; banners[hh].mesh.renderOrder = 2 // outline under the emblem at the same spot
+    ;(outlines[hh].mesh.material as THREE.Material).depthWrite = false
   }
   // soft contact shadows, flat on the ground, one per soldier
   const shTex = new THREE.CanvasTexture(placeholder(g => { const r = g.createRadialGradient(64, 64, 0, 64, 64, 64); r.addColorStop(0, 'rgba(20,24,16,.55)'); r.addColorStop(1, 'rgba(20,24,16,0)'); g.fillStyle = r; g.fillRect(0, 0, 128, 128) })())
@@ -189,6 +209,8 @@ export async function createDiorama(host: HTMLElement, init: any) {
   for (let i = 0; i < 14; i++) propPlaces.areca.push({ x: 80 + rnd() * 840, y: rnd() < 0.5 ? 250 + rnd() * 110 : 640 + rnd() * 110, s: 40 + rnd() * 14 })
   for (const f of init.map.fords) { const n = init.map.nodes.find((m: any) => m.id === f); propPlaces.ford.push({ x: n.x, y: n.y, s: 26 }) }
   for (const id of ['gorge', 'sw-hill']) { const n = init.map.nodes.find((m: any) => m.id === id); propPlaces.rootbridge.push({ x: n.x + 20, y: n.y + 60, s: 60 }) }
+  // rocks and bamboo where the river leaves the map, so the painted edge never shows as a line
+  for (const ex of [6, 994]) for (const ey of [452, 470, 530, 548]) { propPlaces.rock.push({ x: ex + (rnd() - 0.5) * 20, y: ey, s: 14 + rnd() * 10 }); propPlaces.bamboo.push({ x: ex + (rnd() - 0.5) * 30, y: ey + (ey < 500 ? -18 : 18), s: 40 + rnd() * 16 }) }
   for (let i = 0; i < 18; i++) propPlaces.rock.push({ x: 60 + rnd() * 880, y: rnd() < 0.5 ? 380 - rnd() * 300 : 620 + rnd() * 300, s: 8 + rnd() * 8 })
   const PROP_FB: Record<string, () => HTMLCanvasElement> = {
     pine: placeholder(g => { g.fillStyle = '#4e7a5a'; g.beginPath(); g.moveTo(64, 4); g.lineTo(104, 112); g.lineTo(24, 112); g.closePath(); g.fill(); g.fillStyle = '#5a4630'; g.fillRect(58, 110, 12, 18) }),
@@ -268,7 +290,12 @@ export async function createDiorama(host: HTMLElement, init: any) {
     return label
   }
 
-  function resize() { const r = host.getBoundingClientRect(); renderer.setSize(r.width, r.height, false); camera.aspect = r.width / r.height; camera.updateProjectionMatrix() }
+  function resize() {
+    const r = host.getBoundingClientRect(), pad = Number(getComputedStyle(host).getPropertyValue('--panel').replace('px', '')) || 0
+    renderer.setSize(r.width, r.height, false); camera.aspect = r.width / r.height
+    camera.setViewOffset(r.width, r.height, pad * 0.62, 0, r.width, r.height) // centre the picture in the space left of the overlay panel
+    camera.updateProjectionMatrix()
+  }
   addEventListener('resize', resize); resize()
 
   return {
@@ -282,16 +309,24 @@ export async function createDiorama(host: HTMLElement, init: any) {
       // soldiers in loose 3×3 blocks, fewer as the squad loses strength
       const n: Record<string, number> = { inf: 0, arch: 0, cav: 0, ele: 0 }
       let fl = 0, sh = 0
+      const standards: { x: number; y: number; house: string }[] = []
       const bn: Record<string, number> = { rhino: 0, kite: 0, orchid: 0, tiger: 0 }
-      for (const q of s.squads) {
+      // squads in contact are drawn a little apart so the front line between two houses stays visible
+      const shown = s.squads.map(q => ({ ...q }))
+      for (const a of shown) for (const b of s.squads) {
+        if (a.house === b.house || (a.flags & 2) || (b.flags & 2)) continue
+        const dx = a.x - b.x, dy = a.y - b.y, d = Math.hypot(dx, dy) || 1
+        if (d < 70) { a.x += (dx / d) * (70 - d) * 0.5; a.y += (dy / d) * (70 - d) * 0.5 }
+      }
+      for (const q of shown) {
         if (q.flags & 2) continue
         const b = units[q.type], prev = lastX.get(q.id) ?? q.x, moving = Math.abs(q.x - prev) > 0.01
         if (moving) facing.set(q.id, q.x > prev ? 1 : -1)
         lastX.set(q.id, q.x)
         const [full, cols, sp] = FORM[q.type], flip = facing.get(q.id) ?? 1, count = Math.max(1, Math.ceil((q.str / 100) * full)), rows = Math.ceil(full / cols)
-        const c = q.flags & 1 ? HOUSE[q.house].clone().lerp(new THREE.Color('#999'), 0.6) : HOUSE[q.house]
+        const c = HOUSE[q.house], routed = q.flags & 1, spread = routed ? 1.9 : 1 // rout reads as a broken formation, never as a paler house
         for (let k = 0; k < count; k++) {
-          const gx = (k % cols) - (cols - 1) / 2, gy = Math.floor(k / cols) - (rows - 1) / 2
+          const gx = ((k % cols) - (cols - 1) / 2) * spread, gy = (Math.floor(k / cols) - (rows - 1) / 2) * spread
           const jx = ((k * 37) % 7) - 3, jy = ((k * 53) % 5) - 2 // fixed jitter so blocks don't look gridded
           const bob = moving ? Math.abs(Math.sin(time * 9 + k * 1.3)) * 1.6 : 0
           const hgt = SIZE[q.type] * (0.94 + ((k * 29) % 7) / 50), x = q.x + gx * sp + (gy % 2) * sp * 0.4 + jx, y = q.y + gy * sp * 0.75 + jy
@@ -300,13 +335,16 @@ export async function createDiorama(host: HTMLElement, init: any) {
           b.tint.setXYZ(n[q.type]++, c.r, c.g, c.b)
         }
         // the squad's standard: a pennant pole carrying the house emblem on top, outlined in ink
-        const fh = q.type === 'ele' ? 96 : 72, fx = q.x - 6, fy = q.y - rows * sp * 0.35
+        const fh = (q.type === 'ele' ? 96 : 72) * (routed ? 0.6 : 1), fx = q.x - 6, fy = q.y - rows * sp * 0.35
         if (flag) { place(flag.mesh, fl, fx, fy, fh * flag.aspect * flip, fh, yaw); flag.tint.setXYZ(fl++, c.r, c.g, c.b) }
         const bb = banners[q.house], ob = outlines[q.house]
-        if (bb) {
-          const bh = 20, px = fx - 0.42 * fh * (flag?.aspect ?? 0) * flip, lift = fh - 4 + Math.sin(time * 1.5 + fl) * 1.5
-          place(ob.mesh, bn[q.house], px - Math.sin(yaw) * 2, fy - Math.cos(yaw) * 2, bh * 1.2 * bb.aspect, bh * 1.2, yaw, 0, lift - bh * 0.1); ob.tint.setXYZ(bn[q.house], 0.02, 0.02, 0.02)
-          place(bb.mesh, bn[q.house], px, fy, bh * bb.aspect, bh, yaw, 0, lift); const bc = c.clone().multiplyScalar(1.1); bb.tint.setXYZ(bn[q.house]++, bc.r, bc.g, bc.b)
+        // one emblem per house per spot; other houses' emblems at the same spot step aside
+        const near = standards.filter(o => Math.hypot(o.x - q.x, o.y - q.y) < 40)
+        if (bb && !near.some(o => o.house === q.house)) {
+          standards.push({ x: q.x, y: q.y, house: q.house })
+          const bh = 22, px = fx - 0.42 * fh * (flag?.aspect ?? 0) * flip + near.length * 46, lift = fh - 4 + Math.sin(time * 1.5 + fl) * 1.5
+          place(ob.mesh, bn[q.house], px, fy, bh * 1.12 * bb.aspect, bh * 1.12, yaw, 0, lift - bh * 0.06); ob.tint.setXYZ(bn[q.house], 0.02, 0.02, 0.02)
+          place(bb.mesh, bn[q.house], px, fy, bh * bb.aspect, bh, yaw, 0, lift); const bc = c; bb.tint.setXYZ(bn[q.house]++, bc.r, bc.g, bc.b)
         }
       }
       shadows.count = sh; shadows.instanceMatrix.needsUpdate = true

@@ -109,7 +109,8 @@ function resize() {
   const r = cv.getBoundingClientRect(), dpr = devicePixelRatio
   if (!r.width) return
   cv.width = bg.width = r.width * dpr; cv.height = bg.height = r.height * dpr
-  S = (Math.min(r.width, r.height) / 1040) * dpr; OX = (cv.width - 1000 * S) / 2; OY = (cv.height - 1000 * S) / 2
+  const pad = parseFloat(getComputedStyle($('stage')).getPropertyValue('--panel')) || 0 // the overlay panel covers the right edge
+  S = (Math.min(r.width - pad, r.height) / 1040) * dpr; OX = ((r.width - pad) * dpr - 1000 * S) / 2; OY = (cv.height - 1000 * S) / 2
   drawMap(bg.getContext('2d')!)
 }
 const X = (x: number) => OX + x * S, Y = (y: number) => OY + y * S
@@ -244,6 +245,12 @@ function draw() {
 // ---- camera director: look ahead ~9 game seconds, pick the best moment, hold it until just after it happens
 const SCORE: Record<string, number> = { standard: 10, killed: 8, caught: 8, decode: 6, truce: 5, clash: 3 }
 let shot: { x: number; y: number; from: number; until: number } | null = null
+// a shot needs context: two houses in frame, or one house at a named landmark (ford, ferry, camp, village)
+const LANDMARK = [...nodes.values()].filter((n: any) => /^F\d|ferry|-camp|village/.test(n.id))
+function context(at: { x: number; y: number }, pos: { x: number; y: number; flags: number }[]) {
+  const houses = new Set(pos.flatMap((p, i) => (!(p.flags & 2) && Math.hypot(p.x - at.x, p.y - at.y) < 220 ? [squadInfo[i].house] : [])))
+  return houses.size > 1 || (houses.size === 1 && LANDMARK.some((n: any) => Math.hypot(n.x - at.x, n.y - at.y) < 150))
+}
 function director(tt: number, pos: { x: number; y: number; flags: number }[]) {
   if (shot && tt >= shot.from && tt < shot.until) return shot
   let best: { x: number; y: number; s: number; t: number } | null = null
@@ -254,12 +261,17 @@ function director(tt: number, pos: { x: number; y: number; flags: number }[]) {
     if (!sc || (e.type === 'decode' && !e.readable)) continue
     if ((e.type === 'caught' || e.type === 'killed') && letters.get(e.letter)?.kind === 'report') sc = 4
     const at = e.x != null ? e : nodes.get(`${e.type === 'truce' ? e.a : e.house}-camp`)
-    if (at && (!best || sc > best.s)) best = { x: at.x, y: at.y, s: sc, t: e.t }
+    if (at && context(at, pos) && (!best || sc > best.s)) best = { x: at.x, y: at.y, s: sc, t: e.t }
   }
   if (best) return (shot = { x: best.x, y: best.y, from: tt, until: best.t + 40 })
   // nothing big coming: hold on the place with the most soldiers (usually a ford) rather than the wide shot
+  // (two houses meeting count double)
   let crowd = { x: 500, y: 500, n: 0 }
-  for (const n of nodes.values()) { const k = pos.filter(p => !(p.flags & 2) && Math.hypot(p.x - n.x, p.y - n.y) < 130).length; if (k > crowd.n) crowd = { x: n.x, y: n.y, n: k } }
+  for (const n of nodes.values()) {
+    const here = pos.map((p, i) => ({ p, h: squadInfo[i].house })).filter(({ p }) => !(p.flags & 2) && Math.hypot(p.x - n.x, p.y - n.y) < 130)
+    const k = here.length * (new Set(here.map(o => o.h)).size > 1 ? 2 : 1)
+    if (k > crowd.n) crowd = { x: n.x, y: n.y, n: k }
+  }
   return (shot = crowd.n ? { x: crowd.x, y: crowd.y, from: tt, until: tt + 150 } : null)
 }
 
