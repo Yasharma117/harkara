@@ -1,0 +1,1 @@
+Horse.glb: Quaternius "Animals" pack, CC0 1.0 (quaternius.com). Fetched from the quaternius-showcase mirror (github.com/trebeljahr/quaternius-showcase).

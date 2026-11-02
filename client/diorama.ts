@@ -4,6 +4,7 @@ import * as THREE from 'three/webgpu'
 import { texture, uv, vec3, dot, mix, smoothstep, instancedBufferAttribute, float, attribute } from 'three/tsl'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { mapSvg, RIVER } from './mapsvg.ts'
+import { army3d } from './army3d.ts'
 
 export interface Snap {
   t: number
@@ -62,6 +63,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
   const camera = new THREE.PerspectiveCamera(34, 1, 5, 6000)
   camera.position.set(0, 1050, 1250)
   const controls = new OrbitControls(camera, renderer.domElement)
+  ;(globalThis as any).__dio = { camera, controls, W: (x: number, y: number) => new THREE.Vector3(x - 500, 0, y - 500) } // test hook: lets the recorder frame close-ups
   controls.target.set(0, 0, 40)
   Object.assign(controls, { enableDamping: true, minPolarAngle: 0.35, maxPolarAngle: 1.05, minAzimuthAngle: -0.7, maxAzimuthAngle: 0.7, minDistance: 150, maxDistance: 1700 })
 
@@ -188,6 +190,8 @@ export async function createDiorama(host: HTMLElement, init: any) {
 
   const units: Record<string, Awaited<ReturnType<typeof batch>>> = {}
   for (const [k, [name, fb]] of Object.entries(SPRITES)) units[k] = await batch(name, fb, k === 'harkara' ? 80 : init.squads.length * PER_SQUAD, { tinted: true })
+  // animated 3D foot, archers and horse; painted cut-outs stay for elephants (and for everyone if the models fail to load)
+  const army = await army3d(scene, W, init.squads, HOUSE).catch(e => { console.error('3D army failed, using cut-outs', e); return null })
   // a house pennant over each squad, dust behind riders, smoke columns for signals (art only; no placeholders)
   const none = placeholder(() => {})
   const banners: Record<string, Awaited<ReturnType<typeof batch>>> = {}
@@ -393,7 +397,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
         const [full, cols, sp] = FORM[q.type], flip = facing.get(q.id) ?? 1, count = Math.max(1, Math.ceil((q.str / 100) * full)), rows = Math.ceil(full / cols)
         const c = HOUSE[q.house], routed = q.flags & 1, spread = routed ? 1.9 : 1 // rout reads as a broken formation, never as a paler house
         if (!routed) { P.copy(W(q.x, q.y, 0.6)); S.set(cols * sp * 1.12 + 18, rows * sp * 0.75 * 1.25 + 16, 1); M.compose(P, flat, S); discs.setMatrixAt(dn, M); discs.setColorAt(dn++, c) }
-        for (let k = 0; k < count; k++) {
+        for (let k = 0; k < (army && q.type !== 'ele' ? 0 : count); k++) {
           const gx = ((k % cols) - (cols - 1) / 2) * spread, gy = (Math.floor(k / cols) - (rows - 1) / 2) * spread
           const jx = ((k * 37) % 7) - 3, jy = ((k * 53) % 5) - 2 // fixed jitter so blocks don't look gridded
           const bob = moving ? Math.abs(Math.sin(time * 9 + k * 1.3)) * 1.6 : 0
@@ -420,6 +424,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
         }
       }
       shadows.count = sh; shadows.instanceMatrix.needsUpdate = true
+      army?.update(shown, s.t, dt)
       discs.count = dn; discs.instanceMatrix.needsUpdate = true; if (discs.instanceColor) discs.instanceColor.needsUpdate = true
       roundel.mesh.count = rn; roundel.mesh.instanceMatrix.needsUpdate = true
       for (const [hh, bb] of Object.entries(banners)) for (const m of [bb, outlines[hh]]) { m.mesh.count = bn[hh]; m.mesh.instanceMatrix.needsUpdate = true; m.tint.needsUpdate = true }
