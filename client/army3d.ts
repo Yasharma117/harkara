@@ -14,7 +14,7 @@ const GAP: Record<Kind, number> = { inf: 15, arch: 16, cav: 30 }
 const HEIGHT = { foot: 34, horse: 34, rider: 27 }
 const MELEE = ['1H_Melee_Attack_Chop', '1H_Melee_Attack_Slice_Diagonal', '1H_Melee_Attack_Stab', '1H_Melee_Attack_Slice_Horizontal', 'Block_Attack']
 
-interface Fig { root: THREE.Object3D; mixer: THREE.AnimationMixer; acts: Map<string, THREE.AnimationAction>; cur: string; dead: boolean; rider?: Fig; x: number; y: number; yaw: number }
+interface Fig { root: THREE.Object3D; mixer: THREE.AnimationMixer; acts: Map<string, THREE.AnimationAction>; cur: string; dead: boolean; rider?: Fig; x: number; y: number; yaw: number; diedAt: number; hitUntil: number }
 type Mode = 'walk' | 'run' | 'fight' | 'shoot' | 'idle'
 interface Unit { kind: Kind; house: string; figs: Fig[]; lx: number; ly: number; yaw: number; shotAt: number; seen: boolean; spd: number; mode: Mode; next: Mode; nextAt: number }
 
@@ -58,7 +58,7 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
     const mixer = new THREE.AnimationMixer(root), acts = new Map<string, THREE.AnimationAction>()
     for (const clip of src.animations) acts.set(clip.name.replace(prefix, ''), mixer.clipAction(clip))
     scene.add(holder)
-    return { root: holder, mixer, acts, cur: '', dead: false, x: 0, y: 0, yaw: 0 }
+    return { root: holder, mixer, acts, cur: '', dead: false, x: 0, y: 0, yaw: 0, diedAt: 0, hitUntil: 0 }
   }
   // hide the weapons a model carries that don't fit its role, keep one: knights keep sword and shield, archers get a crossbow
   const strip = (fig: Fig, keep: RegExp) => fig.root.traverse(o => { if ((o as THREE.Mesh).isMesh && o.parent?.name.startsWith('handslot') && !keep.test(o.name)) o.visible = false })
@@ -143,20 +143,27 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
         const cos = Math.cos(u.yaw), sin = Math.sin(u.yaw), cols = COLS[u.kind], gap = GAP[u.kind] * (routed ? 1.8 : 1)
         u.figs.forEach((f, i) => {
           if (i >= alive) {
-            if (!f.dead && u.seen) { f.dead = true; play(f, u.kind === 'cav' ? 'Death' : Math.random() < 0.5 ? 'Death_A' : 'Death_B', true, 0.1); if (f.rider) play(f.rider, 'Death_A', true, 0.1) } // the body stays where he fell
+            if (!f.dead && u.seen) { f.dead = true; f.diedAt = clock; play(f, u.kind === 'cav' ? 'Death' : Math.random() < 0.5 ? 'Death_A' : 'Death_B', true, 0.1); if (f.rider) play(f.rider, 'Death_A', true, 0.1) } // the body stays where he fell
             if (!u.seen) f.root.visible = false
+            // the fallen lie a few seconds, then sink into the grass, so fords don't fill with bodies
+            const age = clock - f.diedAt
+            if (f.dead && age > 5) { f.root.visible = age < 7.5; f.root.position.y = W(f.x, f.y, 0).y - (age - 5) * 6 }
           } else {
             if (f.dead) { f.dead = false; f.cur = '' } // rallied
             f.root.visible = true
             const gx = ((i % cols) - (cols - 1) / 2) * gap, gy = (Math.floor(i / cols) - (Math.ceil(PER[u.kind] / cols) - 1) / 2) * gap
             const jx = ((i * 37) % 7) - 3, jy = ((i * 53) % 5) - 2
             f.x = q.x + gx * cos + gy * sin + jx; f.y = q.y - gx * sin + gy * cos + jy; f.yaw = u.yaw
+            // in a fight the block presses forward into contact, front ranks surging and falling back
+            if (mode === 'fight' && foe) { const k = Math.min(45, Math.max(0, fd - 55) * 0.5) + Math.sin(clock * 3 + i) * 4; f.x += Math.sin(u.yaw) * k; f.y += Math.cos(u.yaw) * k }
+            if (mode === 'fight' && clock > f.hitUntil + 1.2 && Math.random() < adt * 0.5) f.hitUntil = clock + 0.6 // takes a blow now and then
             const ts = moving ? THREE.MathUtils.clamp(speed / (u.kind === 'cav' ? 60 : 22), 0.6, 2.6) : 1
             if (u.kind === 'cav') play(f, mode === 'run' ? 'Gallop' : mode === 'walk' ? 'Walk' : mode === 'fight' ? (i % 2 ? 'Attack_Kick' : 'Attack_Headbutt') : 'Idle')
-            else play(f, mode === 'run' ? 'Running_A' : mode === 'walk' ? 'Walking_A' : mode === 'fight' ? MELEE[i % MELEE.length] : mode === 'shoot' ? '2H_Ranged_Shooting' : u.kind === 'arch' ? '2H_Ranged_Aiming' : 'Idle')
+            else play(f, mode === 'run' ? 'Running_A' : mode === 'walk' ? 'Walking_A' : mode === 'fight' ? (clock < f.hitUntil ? (i % 2 ? 'Hit_A' : 'Block_Hit') : MELEE[i % MELEE.length]) : mode === 'shoot' ? '2H_Ranged_Shooting' : u.kind === 'arch' ? '2H_Ranged_Aiming' : 'Idle')
             f.mixer.timeScale = ts
           }
-          f.root.position.copy(W(f.x, f.y, 0)); f.root.rotation.y = f.yaw
+          if (!(f.dead && clock - f.diedAt > 5)) f.root.position.copy(W(f.x, f.y, 0))
+          f.root.rotation.y = f.yaw
           f.mixer.update(adt); f.rider?.mixer.update(adt)
           if (f.root.visible) { const r = u.kind === 'cav' ? 26 : 13; P.copy(W(f.x, f.y, 0.7)); S.set(r * (f.dead ? 1.5 : 1), r * 0.8, 1); M.compose(P, Q, S); blobs.setMatrixAt(bn++, M) }
         })

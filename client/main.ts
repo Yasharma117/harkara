@@ -83,6 +83,29 @@ if (A('paper-grain')) document.body.style.backgroundImage = `linear-gradient(#f2
 const emblem = (h: string) => A(`emblem-${h}`) ? `<span class="emb" style="--c:${COLOR[h]};--m:url(${A(`emblem-${h}`)})"></span>` : `<span class="sw" style="background:${COLOR[h]}"></span>`
 const lad = ladder(COLOR, Object.fromEntries(init.houses.map((h: any) => [h.id, h.name])), h => A(`portrait-${h}`) ?? '')
 $('ladder-open').onclick = () => lad.open()
+// ---- title screen: only on a fresh visit to the start of a battle (a shared moment link skips it)
+if (!hashT && params.get('ladder') === null) {
+  const ts = document.createElement('div'); ts.id = 'title'
+  ts.innerHTML = `<div class="tt-in"><div class="tt-deva" lang="hi">हरकारा</div><h1>HARKARA</h1>
+    <p>Four AI models command four houses in a river war. None of them can see the battlefield: every order is carried by a rider who can be caught, shot or lost, and every captured letter can be read.</p>
+    <div class="tt-btns"><button data-a="rules">The rules</button><button data-a="start" class="tt-go">Watch today’s battle</button><button data-a="ladder">Doctrine Ladder</button></div>
+    <small>${manifest.watches} watches · ${init.houses.map((h: any) => `<b style="color:${COLOR[h.id]}">${h.name}</b>`).join(' · ')}</small></div>
+    <div class="tt-rules" hidden><h2>The rules</h2><ol>
+    <li><b>Win</b> by holding two of the three fords when the last watch ends, or by taking an enemy camp’s standard.</li>
+    <li><b>Fog of war.</b> A general only knows what riders have brought it, and every report is already old.</li>
+    <li><b>Orders ride.</b> Each order is a rider on the road. Foot and horse can catch riders, archers shoot them, mist loses them.</li>
+    <li><b>Ciphers.</b> A plain letter is read at once by whoever catches it. A ciphered one leaves later but is decoded slowly, letter by letter.</li>
+    <li><b>Tricks.</b> Decoys meant to be caught, two riders by two roads, smoke signals everyone sees, and truce letters between houses.</li>
+    <li><b>You</b> can predict the winner, read every letter in the Mailbag, and write a doctrine for tomorrow’s ladder.</li></ol><button data-a="back">Back</button></div>`
+  $('stage').append(ts)
+  ts.onclick = e => {
+    const a = (e.target as HTMLElement).dataset.a
+    if (a === 'rules') { ts.querySelector<HTMLElement>('.tt-rules')!.hidden = false; ts.querySelector<HTMLElement>('.tt-in')!.hidden = true }
+    if (a === 'back') { ts.querySelector<HTMLElement>('.tt-rules')!.hidden = true; ts.querySelector<HTMLElement>('.tt-in')!.hidden = false }
+    if (a === 'ladder') lad.open()
+    if (a === 'start') { ts.classList.add('out'); setTimeout(() => ts.remove(), 500); setPlaying(true) }
+  }
+}
 vo = await voice(id, init.houses, COLOR, h => A(`portrait-${h}`), $('stage'))
 $('ladder-open').before(vo.button)
 if (params.get('ladder') !== null || location.hash === '#ladder') lad.open()

@@ -1,0 +1,13 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "marquee",
+        "value": "shimmer",
+        "createdAt": "2026-11-02T11:33:28.567Z"
+      }
+    ]
+  }
+}

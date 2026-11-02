@@ -34,10 +34,15 @@ export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<stri
   stage.append(box)
   const lines: { t: number; seq: number; html: string; c: string; hold: number }[] = []
   const firstDecode = new Set<string>()
-  const RANK: Record<string, number> = { end: 9, standard: 8, decode: 7, truce: 6, caught: 5, killed: 4, smoke: 3, destroyed: 2, rout: 1 }
+  const RANK: Record<string, number> = { end: 9, standard: 8, decode: 7, truce: 6, caught: 5, killed: 4, smoke: 3, clash: 3, open: 3, destroyed: 2, rout: 1 }
   const cand: { t: number; seq: number; html: string; c: string; hold: number; r: number }[] = []
   const say = (e: Ev, html: string, c: string, hold = 140) => cand.push({ t: e.t, seq: e.seq, html, c, hold, r: RANK[e.type] ?? 0 })
   const truces = new Set<string>()
+  const PLACES: [string, number, number][] = [['the west ford', 200, 500], ['the middle ford', 500, 500], ['the east ford', 800, 500], ['the ferry', 660, 500], ['Nong village', 500, 220], ['Dhara village', 500, 780]]
+  const placeAt = (x: number, y: number) => PLACES.find(([, px, py]) => Math.hypot(px - x, py - y) < 110)?.[0] ?? 'open ground'
+  const met = new Set<string>()
+  const first = events.find(e => e.type === 'courier' && e.kind === 'order')
+  if (first) cand.push({ t: first.t, seq: first.seq, html: 'The generals send their first orders. Every rider you see leaving camp carries one, and every one can be caught.', c: '#8a6a3a', hold: 0, r: 3 })
   for (const e of events) {
     const L = e.letter ? letters.get(e.letter) : undefined
     const what = L ? (L.kind === 'report' ? 'a scouting report' : L.kind === 'letter' ? 'a letter' : L.kind === 'decoy' ? 'a decoy order' : 'an order') : 'a message'
@@ -67,6 +72,13 @@ export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<stri
       case 'standard':
         say(e, `<b>${squadName(e.by)} storm the ${CAP(e.house)} camp and take its standard.</b>`, '#000', 220)
         break
+      case 'clash': {
+        const ha = e.a.split('-')[0], hb = e.b.split('-')[0], key = [ha, hb].sort().join()
+        if (met.has(key)) break
+        met.add(key)
+        say(e, `<b style="color:${COLOR[ha]}">${CAP(ha)}</b> and <b style="color:${COLOR[hb]}">${CAP(hb)}</b> meet for the first time: ${squadName(e.a)} clash with ${squadName(e.b)} at ${placeAt(e.x, e.y)}.`, '#8a6a3a')
+        break
+      }
       case 'destroyed':
         say(e, `${squadName(e.squad)} are <b>destroyed</b>.`, '#555', 110)
         break
@@ -82,24 +94,24 @@ export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<stri
   // the most important moments win: walk by rank, keep a line only if the narrator is free for its whole hold
   const busy: [number, number][] = []
   for (const l of [...cand].sort((a, b) => b.r - a.r || a.t - b.t)) {
-    const span: [number, number] = [l.t - 20, l.t + Math.max(l.hold, 120)]
+    const span: [number, number] = [l.t - 40, l.t + 360] // ~4.5 s at 8×: one line at a time, each readable
     if (busy.some(([a, b]) => span[0] < b && a < span[1])) continue
     busy.push(span); lines.push(l)
   }
   lines.sort((a, b) => a.t - b.t)
-  let shown = -1, until = -1
+  let shown = -1, until = 0, lastT = 0
   return {
     premise,
     tick(t: number) {
-      // newest line at or before t that is still within its hold; never jump back to an older one
-      let pick = -1
-      for (let i = lines.length - 1; i >= 0; i--) { if (lines[i].t <= t) { if (t - lines[i].t < lines[i].hold) pick = i; break } }
-      if (pick >= 0 && pick !== shown) {
-        shown = pick; until = lines[pick].t + lines[pick].hold
-        box.innerHTML = `<div class="nr-line" style="--c:${lines[pick].c}">${lines[pick].html}</div>`
+      if (t < lastT - 1) { shown = lines.findLastIndex(l => l.t <= t); box.classList.remove('on'); until = 0 } // scrubbed back: don't replay old lines
+      lastT = t
+      let i = lines.findLastIndex(l => l.t <= t)
+      if (i > shown && t - lines[i].t < 400) {
+        shown = i; until = performance.now() + 4800 // held in real seconds, whatever the playback speed
+        box.innerHTML = `<div class="nr-line" style="--c:${lines[i].c}">${lines[i].html}</div>`
         box.classList.add('on')
-      } else if (pick < 0 && shown >= 0 && t > until) { box.classList.remove('on'); shown = -1 }
-      else if (t < (lines[shown]?.t ?? 0)) { box.classList.remove('on'); shown = -1 } // scrubbed back
+      } else if (i > shown) shown = i // stale (jumped past it): skip
+      if (until && performance.now() > until) { box.classList.remove('on'); until = 0 }
     },
   }
 }
