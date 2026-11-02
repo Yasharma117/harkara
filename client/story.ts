@@ -74,7 +74,7 @@ export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<stri
         if (/ele|cav/.test(e.squad)) say(e, `${squadName(e.squad)} <b>break and run</b> for their camp.`, '#777', 100)
         break
       case 'end': {
-        say(e, `<b>The battle is over.</b> ${e.reason[0] + e.reason.slice(1).toLowerCase().replace(/^(\w+)/, (m: string) => CAP(m))}.`, COLOR[e.winner], 400)
+        say(e, `<b>The battle is over.</b> ${CAP(e.winner)} ${e.reason.split(' ').slice(1).join(' ').toLowerCase()}.`, COLOR[e.winner], 400)
         break
       }
     }
