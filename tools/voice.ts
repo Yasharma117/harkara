@@ -23,7 +23,7 @@ if (!process.argv.includes('--only-persona'))
     for (const e of JSON.parse(readFileSync(join(dir, f), 'utf8')).events) if (e.type === 'thought' && e.text) lines.push({ key: String(e.seq), house: e.house, text: e.text })
 
 // orders are written in capitals (EAST FORD, BOWMEN); read them as words, not letters
-const speakable = (s: string) => s.replace(/\b[A-Z]{2,}\b/g, w => w.toLowerCase()).replace(/\bF([123])\b/g, (_, n) => ['', 'west ford', 'middle ford', 'east ford'][n]).replace(/_+/g, ' ')
+const speakable = (s: string) => s.replace(/\b0 watches ago/g, 'just now').replace(/\b1 watches\b/g, '1 watch').replace(/\b[A-Z]{2,}\b/g, w => w.toLowerCase()).replace(/\bF([123])\b/g, (_, n) => ['', 'west ford', 'middle ford', 'east ford'][n]).replace(/_+/g, ' ')
 
 const tts = await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX', { dtype: 'q8', device: 'cpu' })
 const index: Record<string, string> = {}

@@ -58,7 +58,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
   renderer.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%'
   host.append(renderer.domElement)
   const scene = new THREE.Scene()
-  scene.fog = new THREE.Fog('#e6e8df', 1500, 3600)
+  scene.fog = new THREE.Fog('#e6e8df', 2200, 4800)
   const camera = new THREE.PerspectiveCamera(34, 1, 5, 6000)
   camera.position.set(0, 1050, 1250)
   const controls = new OrbitControls(camera, renderer.domElement)
@@ -124,7 +124,12 @@ export async function createDiorama(host: HTMLElement, init: any) {
   const guv = ground.attributes.uv
   for (let i = 0; i < guv.count; i++) { guv.setX(i, (gp.getX(i) + 500) / 1000); guv.setY(i, 1 - (gp.getZ(i) + 500) / 1000) }
   gtex.wrapS = gtex.wrapT = THREE.MirroredRepeatWrapping // the valley just outside continues the map's painting, mirrored
-  scene.add(new THREE.Mesh(ground, new THREE.MeshStandardNodeMaterial({ map: gtex, roughness: 1 })))
+  const gm = new THREE.MeshStandardNodeMaterial({ roughness: 1 })
+  { // the painting's white cloud banks over the east hills read as a washed-out patch from the battle camera: soften only near-white paint into light mist
+    const c = texture(gtex, uv()).rgb, w = smoothstep(0.7, 0.9, c.r.min(c.g).min(c.b))
+    gm.colorNode = mix(c, c.mul(vec3(0.76, 0.84, 0.74)), w.mul(0.85))
+  }
+  scene.add(new THREE.Mesh(ground, gm))
   // the valley around the map: ridges shaded darker and cooler with height, the river running out between them
   if (art['tex-grass']) {
     const gt = await tex('tex-grass', () => document.createElement('canvas')); gt.wrapS = gt.wrapT = THREE.RepeatWrapping; gt.repeat.set(26, 26)
@@ -243,17 +248,19 @@ export async function createDiorama(host: HTMLElement, init: any) {
 
   // mist: soft cards drifting over the misty places
   const mistTex = new THREE.CanvasTexture(placeholder(g => { const r = g.createRadialGradient(64, 64, 0, 64, 64, 64); r.addColorStop(0, 'rgba(255,255,255,.75)'); r.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0, 0, 128, 128) })())
-  const mistMat = new THREE.MeshBasicNodeMaterial({ map: mistTex, transparent: true, depthWrite: false, depthTest: false, opacity: 0.06 }) // no depth test: cards cut hard rims where they cross the hills
+  const mistMat = new THREE.MeshBasicNodeMaterial({ map: mistTex, transparent: true, depthWrite: false, depthTest: false, opacity: 0.035 }) // no depth test: cards cut hard rims where they cross the hills
   const mist = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), mistMat, hills.length * 4)
   mist.frustumCulled = false; scene.add(mist)
   const mistAt = hills.flatMap((n: any) => [0, 1, 2, 3].map(i => ({ x: n.x + (i - 1.5) * 50, y: n.y + ((i * 37) % 60) - 30, s: 220 + i * 30, ph: i * 1.7 })))
 
   // couriers' ink routes + flash rings
   const routes = new Map<string, THREE.Line>()
-  const ringGeo = new THREE.RingGeometry(0.7, 1, 48); ringGeo.rotateX(-Math.PI / 2)
-  const rings = Array.from({ length: 24 }, () => { const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, depthTest: false, fog: false, color: '#c0392b' })); m.visible = false; scene.add(m); return m })
+  const ringGeo = new THREE.RingGeometry(0.84, 1, 64); ringGeo.rotateX(-Math.PI / 2)
+  const edgeGeo = new THREE.RingGeometry(0.78, 1.06, 64); edgeGeo.rotateX(-Math.PI / 2) // a dark edge behind each ring, so it reads on any house colour
+  const rings = Array.from({ length: 24 }, () => { const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, depthTest: false, fog: false, color: '#c0392b' })); m.visible = false; m.renderOrder = 5; const e = new THREE.Mesh(edgeGeo, new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, depthTest: false, fog: false, color: '#2a2016' })); e.renderOrder = 4; m.add(e); scene.add(m); return m })
 
-  const labels: { sp: THREE.Sprite; x: number; y: number; spots: { x: number; y: number; v: THREE.Vector3 }[] }[] = []
+  let drawn: Snap['squads'] = [] // squads where they are drawn (contact pushes them apart), for label placement
+  const labels: { sp: THREE.Sprite; tag: THREE.Sprite | null; x: number; y: number; spots: { x: number; y: number; v: THREE.Vector3 }[] }[] = []
   // place names on the ground, so the feed's EAST FORD etc. can be found on the map
   for (const n of init.map.nodes.filter((n: any) => /^F\d$|^ferry$|village$|camp$|^gorge$/.test(n.id))) {
     const c = document.createElement('canvas'), g = c.getContext('2d')!, f = '600 30px "Iowan Old Style", Palatino, Georgia, serif'
@@ -264,7 +271,18 @@ export async function createDiorama(host: HTMLElement, init: any) {
     const sp = new THREE.Sprite(new THREE.SpriteNodeMaterial({ map: t, transparent: true, depthWrite: false, depthTest: false }))
     const ford = /^F|ferry/.test(n.id); sp.position.copy(W(n.x, n.y + (ford ? 52 : 34), 6)); sp.scale.set(c.width * 0.36, 44 * 0.36, 1); sp.renderOrder = 3
     scene.add(sp); const ly = n.y + (ford ? 52 : 34)
-    labels.push({ sp, x: n.x, y: ly, spots: [[0, 0], [0, 45], [-95, 0], [95, 0], [0, -40]].map(([dx, dy]) => ({ x: n.x + dx, y: ly + dy, v: W(n.x + dx, ly + dy, 6) })) })
+    // a ford's name must never vanish (that's where the fighting is): when every spot is taken, it shows as a small ink tag over the ford
+    let tag: THREE.Sprite | null = null
+    if (/^F\d$/.test(n.id)) {
+      const tc = document.createElement('canvas'), tg = tc.getContext('2d')!, tf = '600 24px "Iowan Old Style", Palatino, Georgia, serif'
+      tg.font = tf; tc.width = Math.ceil(tg.measureText(n.name).width) + 28; tc.height = 36
+      tg.fillStyle = 'rgba(42,32,22,.86)'; tg.beginPath(); tg.roundRect(1, 1, tc.width - 2, 34, 6); tg.fill()
+      tg.font = tf; tg.textAlign = 'center'; tg.textBaseline = 'middle'; tg.fillStyle = '#f2e9d8'; tg.fillText(n.name, tc.width / 2, 19)
+      const tt = new THREE.CanvasTexture(tc); tt.colorSpace = THREE.SRGBColorSpace
+      tag = new THREE.Sprite(new THREE.SpriteNodeMaterial({ map: tt, transparent: true, depthWrite: false, depthTest: false }))
+      tag.position.copy(W(n.x, n.y + 46, 4)); tag.scale.set(tc.width * 0.3, 36 * 0.3, 1); tag.renderOrder = 6; tag.visible = false; scene.add(tag)
+    }
+    labels.push({ sp, tag, x: n.x, y: ly, spots: [[0, 0], [0, 45], [-95, 0], [95, 0], [0, -40]].map(([dx, dy]) => ({ x: n.x + dx, y: ly + dy, v: W(n.x + dx, ly + dy, 6) })) })
   }
 
   // ---- per frame
@@ -349,12 +367,14 @@ export async function createDiorama(host: HTMLElement, init: any) {
       let rn = 0
       // squads in contact are drawn a little apart so the front line between two houses stays visible
       const shown = s.squads.map(q => ({ ...q }))
+      drawn = shown
       for (const a of shown) for (const b of s.squads) {
-        if (a.house === b.house || (a.flags & 2) || (b.flags & 2)) continue
+        if (a === b || a.id === b.id || (a.flags & 2) || (b.flags & 2)) continue
+        const gap = a.house === b.house ? 70 : 130 // a house's own squads stand apart too, so stacked blocks don't merge into one swarm
         let dx = a.x - b.x, dy = a.y - b.y, d = Math.hypot(dx, dy)
         if (d < 1) { const home = camps[a.house]; dx = home.x - a.x; dy = home.y - a.y; d = 0; const k = Math.hypot(dx, dy) || 1; dx /= k; dy /= k } // same spot: each steps back toward its own camp
         else { dx /= d; dy /= d }
-        if (d < 130) { a.x += dx * (130 - d) * 0.5; a.y += dy * (130 - d) * 0.5 } // about half a block of open ground between fronts
+        if (d < gap) { a.x += dx * (gap - d) * 0.5; a.y += dy * (gap - d) * 0.5 } // about half a block of open ground between fronts
       }
       for (const q of shown) {
         if (q.flags & 2) continue
@@ -440,19 +460,25 @@ export async function createDiorama(host: HTMLElement, init: any) {
         if (!f) return
         r.position.copy(W(f.x, f.y, 2)); r.scale.setScalar(16 + f.age * 50)
         const m = r.material as THREE.MeshBasicNodeMaterial
-        m.color.set(f.type === 'clash' ? '#efe3c4' : f.type === 'lost' ? '#ffffff' : '#ff3b24'); m.opacity = 0.9 * (1 - f.age)
+        m.color.set(f.type === 'clash' ? '#efe3c4' : f.type === 'lost' ? '#ffffff' : '#e8321e'); m.opacity = 0.95 * (1 - f.age * 0.7)
+        ;((r.children[0] as THREE.Mesh).material as THREE.MeshBasicNodeMaterial).opacity = (f.type === 'clash' ? 0.35 : 0.7) * (1 - f.age * 0.7)
       })
       // labels: hide any that would be cut by the view edge or the panel, or that sit on a unit
       const cw = renderer.domElement.clientWidth, ch = renderer.domElement.clientHeight
+      const placed: { x: number; y: number }[] = [] // names never overlap each other either
       for (const l of labels) {
         // a unit standing on the name pushes the name down-map, toward the camera, rather than hiding it
         // first spot near the place that no unit stands on: the name stays beside its place, never far off
-        // a unit's figures, pennant and roundel rise above it on screen, i.e. up-map: keep names clear of all of it, and of rings
-        const free = l.spots.find(p => !s.squads.some(q => { const ele = q.type === 'ele'; return !(q.flags & 2) && Math.abs(q.x - p.x) < (ele ? 100 : 64) && p.y > q.y - (ele ? 140 : 110) && p.y < q.y + (ele ? 50 : 36) }) && !s.flashes.some(f => Math.hypot(f.x - p.x, f.y - p.y) < 50))
+        // a unit's figures, pennant and roundel rise above it on screen; seen at the camera's ~40° that covers ~1.3× their height up-map: keep names clear of all of it, and of rings
+        // a moved name must stay nearer its own place than any other named place, or it would name the wrong one
+        const free = l.spots.find(p => labels.every(o => o === l || Math.hypot(o.x - p.x, o.y - p.y) > Math.hypot(l.x - p.x, l.y - p.y) + 20) && !placed.some(o => Math.abs(o.x - p.x) < 150 && Math.abs(o.y - p.y) < 34) && !drawn.some(q => { const ele = q.type === 'ele'; return !(q.flags & 2) && Math.abs(q.x - p.x) < (ele ? 110 : 90) && p.y > q.y - (ele ? 200 : 165) && p.y < q.y + (ele ? 90 : 50) }) && !s.flashes.some(f => Math.hypot(f.x - p.x, f.y - p.y) < 50))
         l.sp.position.copy((free ?? l.spots[0]).v)
+        if (free) placed.push(free)
         P.copy(l.sp.position).project(camera)
         const px = (P.x + 1) / 2 * cw, py = (1 - P.y) / 2 * ch, hw = l.sp.scale.x / 2 * ch / (2 * Math.tan(camera.fov * Math.PI / 360) * camera.position.distanceTo(l.sp.position))
-        l.sp.visible = !!free && P.z < 1 && px - hw > 8 && px + hw < cw - panelPx - 8 && py > 24 && py < ch - 24
+        const inView = P.z < 1 && px - hw > 8 && px + hw < cw - panelPx - 8 && py > 24 && py < ch - 24
+        l.sp.visible = !!free && inView
+        if (l.tag) l.tag.visible = !free && inView
       }
       renderer.render(scene, camera)
     },
