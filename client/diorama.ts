@@ -213,6 +213,10 @@ export async function createDiorama(host: HTMLElement, init: any) {
   const shadows = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicNodeMaterial({ map: shTex, transparent: true, depthWrite: false }), init.squads.length * PER_SQUAD)
   shadows.frustumCulled = false; scene.add(shadows)
   const flat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2)
+  // a soft house-coloured footprint under every squad: groups its figures and sets the block off the painted ground
+  const discTex = new THREE.CanvasTexture(placeholder(g => { const r = g.createRadialGradient(64, 64, 0, 64, 64, 64); r.addColorStop(0, 'rgba(255,255,255,.2)'); r.addColorStop(0.7, 'rgba(255,255,255,.16)'); r.addColorStop(0.84, 'rgba(255,255,255,.42)'); r.addColorStop(0.93, 'rgba(255,255,255,.12)'); r.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0, 0, 128, 128) })())
+  const discs = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicNodeMaterial({ map: discTex, transparent: true, depthWrite: false }), init.squads.length)
+  discs.frustumCulled = false; discs.renderOrder = -1; scene.add(discs)
   const flag = art['flag-pennant'] ? await batch('flag-pennant', none, init.squads.length, { tinted: true }) : null
   const dust = art['dust-puff'] ? await batch('dust-puff', none, 80, { tinted: false, opacity: 0.55 }) : null
   const smoke = art['smoke-column'] ? await batch('smoke-column', none, 4, { tinted: false, opacity: 0.85 }) : null
@@ -271,9 +275,9 @@ export async function createDiorama(host: HTMLElement, init: any) {
     const sp = new THREE.Sprite(new THREE.SpriteNodeMaterial({ map: t, transparent: true, depthWrite: false, depthTest: false }))
     const ford = /^F|ferry/.test(n.id); sp.position.copy(W(n.x, n.y + (ford ? 52 : 34), 6)); sp.scale.set(c.width * 0.36, 44 * 0.36, 1); sp.renderOrder = 3
     scene.add(sp); const ly = n.y + (ford ? 52 : 34)
-    // a ford's name must never vanish (that's where the fighting is): when every spot is taken, it shows as a small ink tag over the ford
+    // a name must never vanish (fords are where the fighting is): when every spot is taken, it shows as a small ink tag over its place
     let tag: THREE.Sprite | null = null
-    if (/^F\d$/.test(n.id)) {
+    {
       const tc = document.createElement('canvas'), tg = tc.getContext('2d')!, tf = '600 24px "Iowan Old Style", Palatino, Georgia, serif'
       tg.font = tf; tc.width = Math.ceil(tg.measureText(n.name).width) + 28; tc.height = 36
       tg.fillStyle = 'rgba(42,32,22,.86)'; tg.beginPath(); tg.roundRect(1, 1, tc.width - 2, 34, 6); tg.fill()
@@ -364,17 +368,22 @@ export async function createDiorama(host: HTMLElement, init: any) {
       let fl = 0, sh = 0
       const standards: { x: number; y: number; house: string }[] = []
       const bn: Record<string, number> = { rhino: 0, kite: 0, orchid: 0, tiger: 0 }
-      let rn = 0
+      let rn = 0, dn = 0
       // squads in contact are drawn a little apart so the front line between two houses stays visible
       const shown = s.squads.map(q => ({ ...q }))
       drawn = shown
-      for (const a of shown) for (const b of s.squads) {
-        if (a === b || a.id === b.id || (a.flags & 2) || (b.flags & 2)) continue
-        const gap = a.house === b.house ? 70 : 130 // a house's own squads stand apart too, so stacked blocks don't merge into one swarm
-        let dx = a.x - b.x, dy = a.y - b.y, d = Math.hypot(dx, dy)
-        if (d < 1) { const home = camps[a.house]; dx = home.x - a.x; dy = home.y - a.y; d = 0; const k = Math.hypot(dx, dy) || 1; dx /= k; dy /= k } // same spot: each steps back toward its own camp
-        else { dx /= d; dy /= d }
-        if (d < gap) { a.x += dx * (gap - d) * 0.5; a.y += dy * (gap - d) * 0.5 } // about half a block of open ground between fronts
+      // spread squads apart where they're drawn: a few relaxation passes over pairs, so a pile of six squads at one
+      // village opens into readable blocks instead of pushes from the original spots fighting each other
+      for (let pass = 0; pass < 4; pass++) for (let i = 0; i < shown.length; i++) for (let j = i + 1; j < shown.length; j++) {
+        const a = shown[i], b = shown[j]
+        if ((a.flags & 2) || (b.flags & 2)) continue
+        const gap = a.house === b.house ? 95 : 130 // a house's own squads stand apart too, so stacked blocks don't merge into one swarm
+        let dx = a.x - b.x, dy = a.y - b.y
+        const da = Math.hypot(dx, dy * 0.7) // up-map gaps count for less: from this camera a block's figures and pennant rise over the block behind it
+        if (da >= gap) continue
+        if (da < 1) { const ha = camps[a.house], hb = camps[b.house]; dx = ha.x - hb.x || 1; dy = ha.y - hb.y } // same spot: part toward their own camps
+        const k = Math.hypot(dx, dy) || 1, push = (gap - Math.max(da, 1)) * 0.5 / (pass + 1)
+        a.x += (dx / k) * push; a.y += (dy / k) * push; b.x -= (dx / k) * push; b.y -= (dy / k) * push
       }
       for (const q of shown) {
         if (q.flags & 2) continue
@@ -383,6 +392,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
         lastX.set(q.id, q.x)
         const [full, cols, sp] = FORM[q.type], flip = facing.get(q.id) ?? 1, count = Math.max(1, Math.ceil((q.str / 100) * full)), rows = Math.ceil(full / cols)
         const c = HOUSE[q.house], routed = q.flags & 1, spread = routed ? 1.9 : 1 // rout reads as a broken formation, never as a paler house
+        if (!routed) { P.copy(W(q.x, q.y, 0.6)); S.set(cols * sp * 1.12 + 18, rows * sp * 0.75 * 1.25 + 16, 1); M.compose(P, flat, S); discs.setMatrixAt(dn, M); discs.setColorAt(dn++, c) }
         for (let k = 0; k < count; k++) {
           const gx = ((k % cols) - (cols - 1) / 2) * spread, gy = (Math.floor(k / cols) - (rows - 1) / 2) * spread
           const jx = ((k * 37) % 7) - 3, jy = ((k * 53) % 5) - 2 // fixed jitter so blocks don't look gridded
@@ -397,11 +407,12 @@ export async function createDiorama(host: HTMLElement, init: any) {
         if (flag) { place(flag.mesh, fl, fx, fy, fh * flag.aspect * flip, fh, yaw); flag.tint.setXYZ(fl++, c.r, c.g, c.b) }
         const bb = banners[q.house], ob = outlines[q.house]
         // one emblem per house per spot; other houses' emblems at the same spot step aside
-        const near = standards.filter(o => Math.hypot(o.x - q.x, o.y - q.y) < 75) // roundels are ~40 wide: closer than this they overlap
+        const near = standards.filter(o => Math.hypot(o.x - q.x, (o.y - q.y) * 0.7) < 115) // one roundel per house per cluster: squads stand ~95 apart, and roundels stack up-screen
+        const touching = near.filter(o => o.house !== q.house && Math.hypot(o.x - q.x, (o.y - q.y) * 0.7) < 60).length // only a real overlap makes a roundel step aside
         if (bb && !near.some(o => o.house === q.house)) {
           standards.push({ x: q.x, y: q.y, house: q.house })
           // on the pole tip (the pole stands at 35% of the pennant art's width); a second house at the spot steps aside
-          const D = q.type === 'ele' ? 40 : 34, px = fx - 0.15 * fh * (flag?.aspect ?? 0.667) * flip + near.length * 46, lift = fh * 0.95
+          const D = q.type === 'ele' ? 40 : 34, px = fx - 0.15 * fh * (flag?.aspect ?? 0.667) * flip + touching * 46, lift = fh * 0.95
           const eh = Math.min(D * 0.5, (D * 0.74) / bb.aspect), ey = lift + (D - eh) / 2
           place(roundel.mesh, rn++, px, fy + 0.5, D, D, yaw, 0, lift)
           place(ob.mesh, bn[q.house], px, fy + 1, eh * 1.14 * bb.aspect * flip, eh * 1.14, yaw, 0, ey - eh * 0.07); ob.tint.setXYZ(bn[q.house], 0.1, 0.08, 0.06)
@@ -409,6 +420,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
         }
       }
       shadows.count = sh; shadows.instanceMatrix.needsUpdate = true
+      discs.count = dn; discs.instanceMatrix.needsUpdate = true; if (discs.instanceColor) discs.instanceColor.needsUpdate = true
       roundel.mesh.count = rn; roundel.mesh.instanceMatrix.needsUpdate = true
       for (const [hh, bb] of Object.entries(banners)) for (const m of [bb, outlines[hh]]) { m.mesh.count = bn[hh]; m.mesh.instanceMatrix.needsUpdate = true; m.tint.needsUpdate = true }
       if (flag) { flag.mesh.count = fl; flag.mesh.instanceMatrix.needsUpdate = true; flag.tint.needsUpdate = true }
@@ -458,7 +470,12 @@ export async function createDiorama(host: HTMLElement, init: any) {
       rings.forEach((r, i) => {
         const f = s.flashes[i]; r.visible = !!f
         if (!f) return
-        r.position.copy(W(f.x, f.y, 2)); r.scale.setScalar(16 + f.age * 50)
+        // ring the units as they are drawn (spacing moves them off the simulation spot), not the empty ground they left
+        let best = -1, bd = 90
+        s.squads.forEach((q, k) => { const d = Math.hypot(q.x - f.x, q.y - f.y); if (!(q.flags & 2) && drawn[k] && d < bd) { bd = d; best = k } })
+        let fx = best < 0 ? f.x : f.x + drawn[best].x - s.squads[best].x, fy = best < 0 ? f.y : f.y + drawn[best].y - s.squads[best].y // a catch or shot follows the squad that made it
+        if (f.type === 'clash') { let n = 0, sx = 0, sy = 0; s.squads.forEach((q, k) => { if (!(q.flags & 2) && drawn[k] && Math.hypot(q.x - f.x, q.y - f.y) < 60) { sx += drawn[k].x; sy += drawn[k].y; n++ } }); if (n) { fx = sx / n; fy = sy / n } } // a clash rings the middle of everyone in it
+        r.position.copy(W(fx, fy, 2)); r.scale.setScalar(16 + f.age * 50)
         const m = r.material as THREE.MeshBasicNodeMaterial
         m.color.set(f.type === 'clash' ? '#efe3c4' : f.type === 'lost' ? '#ffffff' : '#e8321e'); m.opacity = 0.95 * (1 - f.age * 0.7)
         ;((r.children[0] as THREE.Mesh).material as THREE.MeshBasicNodeMaterial).opacity = (f.type === 'clash' ? 0.35 : 0.7) * (1 - f.age * 0.7)
