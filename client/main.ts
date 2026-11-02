@@ -2,6 +2,7 @@
 import type { Ev, WatchFile } from '../engine/sim.ts'
 import { ladder } from './ladder.ts'
 import { voice } from './voice.ts'
+import { story } from './story.ts'
 
 const COLOR: Record<string, string> = { rhino: '#34418f', kite: '#b3242f', orchid: '#b13f9a', tiger: '#e3a812' }
 const HOUSES = ['rhino', 'kite', 'orchid', 'tiger']
@@ -26,10 +27,11 @@ let t = Number(hashT ?? params.get('t') ?? 0), playing = !hashT, speed = 8, beli
 for (const b of index) $('battle').append(new Option(b.id, b.id, false, b.id === id)) // no winner here: it would spoil Predict
 $('battle').onchange = e => { location.hash = (e.target as HTMLSelectElement).value; location.reload() }
 const playBtn = $('play')
-let vo: Awaited<ReturnType<typeof voice>> | null = null, opened = false
+let busyIntro = false
+let vo: Awaited<ReturnType<typeof voice>> | null = null, opened = false, tale: ReturnType<typeof story> | null = null
 const setPlaying = (p: boolean) => {
-  if (vo?.busy) return // the opening scene starts the battle when it ends
-  if (p && vo && !opened && t < 30) { opened = true; playBtn.textContent = 'Pause'; vo.opening().then(() => setPlaying(true)); return } // the opening scene runs once, before the first watch
+  if (vo?.busy || busyIntro) return // the opening scene starts the battle when it ends
+  if (p && vo && !opened && t < 30) { opened = true; playBtn.textContent = 'Pause'; (async () => { while (!tale) await new Promise(r => setTimeout(r, 50)); busyIntro = true; await tale.premise(); busyIntro = false; await vo!.opening(); setPlaying(true) })(); return } // the opening scene runs once, before the first watch
   playing = p; playBtn.textContent = p ? 'Pause' : 'Play'
 }
 setPlaying(playing)
@@ -84,7 +86,7 @@ $('ladder-open').onclick = () => lad.open()
 vo = await voice(id, init.houses, COLOR, h => A(`portrait-${h}`), $('stage'))
 $('ladder-open').before(vo.button)
 if (params.get('ladder') !== null || location.hash === '#ladder') lad.open()
-$('houses').innerHTML = init.houses.map((h: any) => `<div class="house">${A(`portrait-${h.id}`) ? `<img class="portrait" src="${A(`portrait-${h.id}`)}" alt="">` : ''}<div><div class="hname">${emblem(h.id)}<b>${h.name}</b><small>${h.id} · ${h.model}</small></div><i>“${h.line}”</i></div></div>`).join('')
+$('houses').innerHTML = init.houses.map((h: any) => `<div class="house" data-h="${h.id}" tabindex="0" style="--c:${COLOR[h.id]}">${A(`portrait-${h.id}`) ? `<img class="portrait" src="${A(`portrait-${h.id}`)}" alt="">` : ''}<div><div class="hname">${emblem(h.id)}<b>${h.name}</b><small>${h.id} · ${h.model}</small></div><i>“${h.line}”</i></div></div>`).join('')
 
 // ---- streaming load: playback starts after watch 1
 ;(async () => {
@@ -96,6 +98,7 @@ $('houses').innerHTML = init.houses.map((h: any) => `<div class="house">${A(`por
     addMarks(wf.events)
   }
   end = await get('end.json')
+  tale = story(events, letters, COLOR, $('stage'))
 })()
 while (!watches.length) await new Promise(r => setTimeout(r, 20))
 
@@ -424,6 +427,28 @@ function dispatchCard(lid: string, captor: string) {
   })
 }
 
+// ---- general cards: a card pulses when its general acts (sends, catches, decodes, makes a truce)
+const ACT = new Set(['courier', 'caught', 'killed', 'decode', 'truce', 'smoke', 'thought'])
+let pulsed = -1
+function pulseCards() {
+  let i = events.length - 1
+  while (i >= 0 && events[i].t > t) i--
+  if (i < 0 || events[i].seq === pulsed) return
+  const top = events[i].seq
+  for (let k = i; k >= 0 && events[k].seq > pulsed; k--) {
+    const e = events[k]
+    if (!ACT.has(e.type) || t - e.t > 30) continue
+    const who = e.type === 'caught' || e.type === 'killed' ? String(e.by ?? '').split('-')[0] : e.type === 'truce' ? e.a : e.house
+    for (const h of e.type === 'truce' ? [e.a, e.b] : [who]) {
+      const el = document.querySelector<HTMLElement>(`.house[data-h="${h}"]`)
+      if (!el) continue
+      el.classList.remove('act'); void el.offsetWidth; el.classList.add('act', ...(e.type === 'caught' || e.type === 'decode' || e.type === 'truce' ? ['big'] : []))
+      setTimeout(() => el.classList.remove('act', 'big'), 1400)
+    }
+  }
+  pulsed = top
+}
+
 // ---- loop
 let last = performance.now()
 function loop(now: number) {
@@ -434,7 +459,7 @@ function loop(now: number) {
   if (playing && t >= TOTAL) setPlaying(false)
   scrub.value = String(Math.floor(t))
   $('clock').textContent = `Watch ${Math.min(manifest.watches, Math.floor(t / TPW) + 1)}/${manifest.watches}`
-  draw(); feed(); vo?.tick(events, t, playing, speed)
+  draw(); feed(); vo?.tick(events, t, playing, speed); tale?.tick(t); pulseCards()
 }
 addEventListener('resize', resize)
 resize()
