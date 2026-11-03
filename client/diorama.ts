@@ -340,8 +340,14 @@ export async function createDiorama(host: HTMLElement, init: any) {
       k = 4; label = 'Following a rider · drag to let go'
     } else if (follow) label = follow.seen ? 'The ride is over' : 'Waiting for the rider to leave camp'
     else if (!idle) return label
-    else if (s.shot) { want.t.copy(W(s.shot.x, s.shot.y)); want.r = 720; want.polar = 0.86 }
-    else Object.assign(want, { t: want.t.copy(OVER.t), r: OVER.r, polar: OVER.polar, az: OVER.az })
+    else if (s.shot) {
+      want.t.copy(W(s.shot.x, s.shot.y)); want.r = 720; want.polar = 0.86
+      want.az = Math.sin(now / 11000) * 0.28 // a slow drift around the action while it holds, like a crane on a set
+      const far = controls.target.distanceTo(want.t)
+      if (far > 250) want.r += Math.min(650, far * 0.7) // far to go: rise up and over rather than slide along the ground
+      k = 0.85
+    }
+    else { Object.assign(want, { t: want.t.copy(OVER.t), r: OVER.r, polar: OVER.polar, az: OVER.az + Math.sin(now / 14000) * 0.2 }); k = 0.6 }
     const e = 1 - Math.exp(-dt * k)
     sph.setFromVector3(P.copy(camera.position).sub(controls.target))
     controls.target.lerp(want.t, e)

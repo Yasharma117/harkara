@@ -128,7 +128,7 @@ while (!watches.length) await new Promise(r => setTimeout(r, 20))
 function addMarks(evs: Ev[]) {
   const color: Record<string, string> = { caught: '#c0392b', killed: '#c0392b', truce: '#4e7a5a', rout: '#888', standard: '#000' }
   for (const e of evs) {
-    const c = e.type === 'decode' ? (e.readable ? '#2e3550' : null) : color[e.type]
+    const c = e.type === 'decode' ? (e.readable ? '#8fa6ff' : null) : color[e.type]
     if (!c) continue
     marks.push(e.t)
     const i = document.createElement('i')
