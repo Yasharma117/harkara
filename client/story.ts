@@ -32,11 +32,13 @@ export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<stri
   const box = document.createElement('div')
   box.id = 'narrator'
   stage.append(box)
-  const lines: { t: number; seq: number; html: string; c: string; hold: number }[] = []
+  type Letter = { from: string; to: string; seal: 'intact' | 'broken'; head: string; cipher: string | null; plain: string; reveal: boolean }
+  const lines: { t: number; seq: number; html: string; c: string; hold: number; letter?: Letter }[] = []
   const firstDecode = new Set<string>()
   const RANK: Record<string, number> = { end: 9, standard: 8, decode: 7, truce: 6, caught: 5, killed: 4, smoke: 3, clash: 3, open: 3, destroyed: 2, rout: 1 }
-  const cand: { t: number; seq: number; html: string; c: string; hold: number; r: number }[] = []
-  const say = (e: Ev, html: string, c: string, hold = 140) => cand.push({ t: e.t, seq: e.seq, html, c, hold, r: RANK[e.type] ?? 0 })
+  const cand: { t: number; seq: number; html: string; c: string; hold: number; r: number; letter?: Letter }[] = []
+  const say = (e: Ev, html: string, c: string, hold = 140, letter?: Letter) => cand.push({ t: e.t, seq: e.seq, html, c, hold, r: RANK[e.type] ?? 0, letter })
+  const toName = (to: string) => to.includes('-') ? squadName(to) : `the ${CAP(to.replace('-camp', ''))} camp`
   const truces = new Set<string>()
   const PLACES: [string, number, number][] = [['the west ford', 200, 500], ['the middle ford', 500, 500], ['the east ford', 800, 500], ['the ferry', 660, 500], ['Nong village', 500, 220], ['Dhara village', 500, 780]]
   const placeAt = (x: number, y: number) => PLACES.find(([, px, py]) => Math.hypot(px - x, py - y) < 110)?.[0] ?? 'open ground'
@@ -50,7 +52,8 @@ export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<stri
     switch (e.type) {
       case 'caught':
         if (L?.kind === 'report') break
-        say(e, `<b style="color:${COLOR[e.house]}">${CAP(e.house)}'s</b> rider is <b>captured</b> by ${squadName(e.by)}. ${CAP(e.by.split('-')[0])} now holds ${what}${text ? `: ${text}` : ''}${L?.cipher ? ', but it is in cipher. Their clerks start decoding.' : ', written plain. They can read it at once.'}`, COLOR[e.by.split('-')[0]], 170)
+        say(e, `<b style="color:${COLOR[e.house]}">${CAP(e.house)}'s</b> rider is <b>captured</b> by ${squadName(e.by)}. ${CAP(e.by.split('-')[0])} now holds ${what}${text ? `: ${text}` : ''}${L?.cipher ? ', but it is in cipher. Their clerks start decoding.' : ', written plain. They can read it at once.'}`, COLOR[e.by.split('-')[0]], 170,
+          L ? { from: L.house, to: toName(L.to), seal: 'broken', head: `Taken by ${squadName(e.by)}`, cipher: L.cipher, plain: L.plain, reveal: !L.cipher } : undefined)
         break
       case 'killed':
         if (L?.kind === 'report') break
@@ -59,12 +62,16 @@ export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<stri
       case 'decode':
         if (!e.readable || firstDecode.has(e.letter)) break
         firstDecode.add(e.letter)
-        say(e, `<b style="color:${COLOR[e.house]}">${CAP(e.house)}</b> has <b>broken the cipher</b> on a captured ${L?.house ? `${CAP(L.house)} ` : ''}letter: <span class="mono">${e.text}</span> They know the plan.`, COLOR[e.house], 190)
+        say(e, `<b style="color:${COLOR[e.house]}">${CAP(e.house)}</b> has <b>broken the cipher</b> on a captured ${L?.house ? `${CAP(L.house)} ` : ''}letter: <span class="mono">${e.text}</span> They know the plan.`, COLOR[e.house], 190,
+          L ? { from: L.house, to: toName(L.to), seal: 'broken', head: `${CAP(e.house)}'s clerks break the cipher`, cipher: L.cipher, plain: L.plain, reveal: true } : undefined)
         break
       case 'truce':
         if (truces.has([e.a, e.b].sort().join())) break // the same pact renewed isn't news
         truces.add([e.a, e.b].sort().join())
-        say(e, `A letter reaches its camp: <b style="color:${COLOR[e.a]}">${CAP(e.a)}</b> and <b style="color:${COLOR[e.b]}">${CAP(e.b)}</b> agree a <b>truce</b> until watch ${e.until}. Neither will attack the other, for now.`, '#4e7a5a', 170)
+        say(e, `A letter reaches its camp: <b style="color:${COLOR[e.a]}">${CAP(e.a)}</b> and <b style="color:${COLOR[e.b]}">${CAP(e.b)}</b> agree a <b>truce</b> until watch ${e.until}. Neither will attack the other, for now.`, '#4e7a5a', 170, (() => {
+          const tl = [...letters.values()].filter(l => l.kind === 'letter' && l.t <= e.t && [e.a, e.b].includes(l.house) && /TRUCE/.test(l.plain)).pop()
+          return tl ? { from: tl.house, to: `the ${CAP(String(tl.to).replace('-camp', ''))} camp`, seal: 'intact', head: 'A truce letter arrives', cipher: null, plain: tl.plain, reveal: true } : undefined
+        })())
         break
       case 'smoke':
         say(e, `<b style="color:${COLOR[e.house]}">${CAP(e.house)}</b> lights a smoke signal: <b>${e.code}</b>. Faster than any rider, but every enemy sees it too.`, COLOR[e.house])
@@ -99,16 +106,36 @@ export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<stri
     busy.push(span); lines.push(l)
   }
   lines.sort((a, b) => a.t - b.t)
+  // ---- a letter opens on the battlefield: sender, seal, and the text, a cipher resolving into plain words
+  const sheet = document.createElement('div'); sheet.id = 'letter'; stage.append(sheet)
+  let sheetTimer = 0, scramble = 0
+  function openLetter(l: Letter) {
+    clearTimeout(sheetTimer); cancelAnimationFrame(scramble)
+    const c = COLOR[l.from] ?? '#555'
+    sheet.innerHTML = `<div class="lt-in" style="--c:${c}"><div class="lt-head">${l.head}</div><img class="lt-seal" src="art/seal-${l.seal}.webp" alt=""><div class="lt-from">From <b style="color:${c}">${CAP(l.from)}</b> to ${l.to}</div><p class="lt-body"></p></div>`
+    sheet.classList.add('on')
+    const body = sheet.querySelector('.lt-body')!, src = l.cipher ?? l.plain, dst = l.plain, t0 = performance.now()
+    // each letter settles at its own moment, so the plan surfaces word by word
+    const order = [...dst].map((_, k) => 0.35 + ((k * 7919) % 97) / 97 * 1.6)
+    const step = () => {
+      const k = (performance.now() - t0) / 1000
+      body.textContent = [...dst].map((ch, j) => !l.reveal ? (src[j] ?? ch) : k > order[j] ? ch : /[A-Z]/.test(ch) ? (k > 0.2 ? String.fromCharCode(65 + ((j * 13 + Math.floor(k * 18)) % 26)) : src[j] ?? ch) : ch).join('')
+      if (k < 2.2) scramble = requestAnimationFrame(step)
+    }
+    step()
+    sheetTimer = window.setTimeout(() => sheet.classList.remove('on'), 5200)
+  }
   let shown = -1, until = 0, lastT = 0
   return {
     premise,
     tick(t: number) {
-      if (t < lastT - 1) { shown = lines.findLastIndex(l => l.t <= t); box.classList.remove('on'); until = 0 } // scrubbed back: don't replay old lines
+      if (t < lastT - 1) { shown = lines.findLastIndex(l => l.t <= t); box.classList.remove('on'); sheet.classList.remove('on'); until = 0 } // scrubbed back: don't replay old lines
       lastT = t
       let i = lines.findLastIndex(l => l.t <= t)
       if (i > shown && t - lines[i].t < 400) {
         shown = i; until = performance.now() + 4800 // held in real seconds, whatever the playback speed
         box.innerHTML = `<div class="nr-line" style="--c:${lines[i].c}">${lines[i].html}</div>`
+        if (lines[i].letter) openLetter(lines[i].letter!)
         box.classList.add('on')
       } else if (i > shown) shown = i // stale (jumped past it): skip
       if (until && performance.now() > until) { box.classList.remove('on'); until = 0 }
