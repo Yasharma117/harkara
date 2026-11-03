@@ -20,7 +20,15 @@ interface Unit { kind: Kind; house: string; figs: Fig[]; lx: number; ly: number;
 
 export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?: number) => THREE.Vector3, squads: { id: string; house: string; type: string }[], HOUSE: Record<string, THREE.Color>) {
   const loader = new GLTFLoader()
-  const load = (f: string) => loader.loadAsync(`models/${f}`)
+  // models/*.glb normally; hosts that won't serve .glb get models/pack.json (base64), made by tools/pack-models.ts
+  let pack: Promise<Record<string, string>> | null = null
+  const load = async (f: string) => {
+    const r = await fetch(`models/${f}`).catch(() => null)
+    if (r?.ok) return loader.parseAsync(await r.arrayBuffer(), 'models/')
+    pack ??= fetch('models/pack.json').then(r => r.json())
+    const b = Uint8Array.from(atob((await pack)[f]), c => c.charCodeAt(0))
+    return loader.parseAsync(b.buffer, 'models/')
+  }
   const [knight, rogue, horse, bow, bolt] = await Promise.all(['Knight.glb', 'Rogue_Hooded.glb', 'Horse.glb', 'crossbow_2handed.glb', 'arrow.glb'].map(load))
 
   // house colour goes on the neutral, light parts of the paint (armour, cloth); skin, wood and leather keep their colours
