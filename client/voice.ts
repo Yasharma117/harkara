@@ -63,8 +63,9 @@ export async function voice(id: string, houses: House[], COLOR: Record<string, s
 
   const btn = document.createElement('button')
   const label = () => { btn.textContent = on ? 'Sound on' : 'Sound off'; btn.setAttribute('aria-pressed', String(on)) }
-  btn.onclick = () => { on = !on; localStorage.setItem(KEY, on ? 'on' : 'off'); if (!on) speaking?.pause(); label() }
+  let onToggle: (v: boolean) => void = () => {}
+  btn.onclick = () => { on = !on; localStorage.setItem(KEY, on ? 'on' : 'off'); if (!on) speaking?.pause(); label(); onToggle(on) }
   label()
-  btn.hidden = !Object.keys(clips).length
-  return { opening, tick, button: btn, get busy() { return busy } }
+  btn.hidden = false // the soundscape plays even where a battle has no voice clips
+  return { opening, tick, button: btn, get busy() { return busy }, get on() { return on }, onToggle(f: (v: boolean) => void) { onToggle = f } }
 }

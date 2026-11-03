@@ -3,6 +3,7 @@ import type { Ev, WatchFile } from '../engine/sim.ts'
 import { ladder } from './ladder.ts'
 import { voice } from './voice.ts'
 import { story } from './story.ts'
+import { soundscape } from './sound.ts'
 
 const COLOR: Record<string, string> = { rhino: '#34418f', kite: '#b3242f', orchid: '#b13f9a', tiger: '#e3a812' }
 const HOUSES = ['rhino', 'kite', 'orchid', 'tiger']
@@ -108,6 +109,7 @@ if (!hashT && params.get('ladder') === null) {
 }
 vo = await voice(id, init.houses, COLOR, h => A(`portrait-${h}`), $('stage'))
 $('ladder-open').before(vo.button)
+const sfx = soundscape(); sfx.set(vo.on); vo.onToggle(v => sfx.set(v))
 if (params.get('ladder') !== null || location.hash === '#ladder') lad.open()
 $('houses').innerHTML = init.houses.map((h: any) => `<div class="house" data-h="${h.id}" tabindex="0" style="--c:${COLOR[h.id]}">${A(`portrait-${h.id}`) ? `<img class="portrait" src="${A(`portrait-${h.id}`)}" alt="">` : ''}<div><div class="hname">${emblem(h.id)}<b>${h.name}</b><small>${h.id} · ${h.model}</small></div><i>“${h.line}”</i></div></div>`).join('')
 
@@ -508,7 +510,7 @@ function loop(now: number) {
   if (playing && t >= TOTAL) setPlaying(false)
   scrub.value = String(Math.floor(t))
   $('clock').textContent = `Watch ${Math.min(manifest.watches, Math.floor(t / TPW) + 1)}/${manifest.watches}`
-  draw(); feed(); vo?.tick(events, t, playing, speed); tale?.tick(t); pulseCards()
+  draw(); feed(); vo?.tick(events, t, playing, speed); tale?.tick(t); pulseCards(); sfx.tick(events, t, playing, TPW)
 }
 addEventListener('resize', resize)
 resize()
