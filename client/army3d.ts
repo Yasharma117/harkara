@@ -21,7 +21,7 @@ interface Unit { kind: Kind; house: string; figs: Fig[]; lx: number; ly: number;
 export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?: number) => THREE.Vector3, squads: { id: string; house: string; type: string }[], HOUSE: Record<string, THREE.Color>) {
   const loader = new GLTFLoader()
   const load = (f: string) => loader.loadAsync(`models/${f}`)
-  const [knight, rogue, horse, bow, bolt] = await Promise.all(['Knight.glb', 'Rogue_Hooded.glb', 'Horse.glb', 'crossbow_2handed.gltf', 'arrow.gltf'].map(load))
+  const [knight, rogue, horse, bow, bolt] = await Promise.all(['Knight.glb', 'Rogue_Hooded.glb', 'Horse.glb', 'crossbow_2handed.glb', 'arrow.glb'].map(load))
 
   // house colour goes on the neutral, light parts of the paint (armour, cloth); skin, wood and leather keep their colours
   const mats = new Map<string, THREE.Material>()
