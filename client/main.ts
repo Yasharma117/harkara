@@ -477,7 +477,7 @@ function dispatchCard(lid: string, captor: string) {
 }
 
 // ---- general cards: a card pulses when its general acts (sends, catches, decodes, makes a truce)
-const ACT = new Set(['courier', 'caught', 'killed', 'decode', 'truce', 'smoke', 'thought'])
+const ACT = new Set(['caught', 'killed', 'decode', 'truce', 'smoke']) // real moments only: everyone sends orders all the time
 let pulsed = -1
 function pulseCards() {
   let i = events.length - 1

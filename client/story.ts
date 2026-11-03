@@ -48,7 +48,7 @@ export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<stri
   for (const e of events) {
     const L = e.letter ? letters.get(e.letter) : undefined
     const what = L ? (L.kind === 'report' ? 'a scouting report' : L.kind === 'letter' ? 'a letter' : L.kind === 'decoy' ? 'a decoy order' : 'an order') : 'a message'
-    const text = L?.plain ? `“${lower(L.plain)}”` : ''
+    const text = L?.plain ? `“${lower(L.plain).replace(/[.!]+$/, '')}”` : ''
     switch (e.type) {
       case 'caught':
         if (L?.kind === 'report') break
