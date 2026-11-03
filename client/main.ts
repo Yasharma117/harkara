@@ -153,8 +153,21 @@ function resize() {
 }
 const X = (x: number) => OX + x * S, Y = (y: number) => OY + y * S
 
+// the painted map (batch 4) under the 2D view; the plan's lines stay faint on top so routes still read
+const painted = new Image(); painted.src = 'art/map-painted.webp'
+painted.onload = () => drawMap(bg.getContext('2d')!)
 function drawMap(g: CanvasRenderingContext2D) {
-  g.fillStyle = '#f2e9d8'; g.fillRect(0, 0, bg.width, bg.height)
+  g.fillStyle = painted.complete && painted.naturalWidth ? '#1d1610' : '#f2e9d8'; g.fillRect(0, 0, bg.width, bg.height)
+  if (painted.complete && painted.naturalWidth) {
+    g.save(); g.shadowColor = '#0005'; g.shadowBlur = 24 * S; g.drawImage(painted, X(0), Y(0), 1000 * S, 1000 * S); g.restore()
+    g.font = `600 ${13 * S}px 'Iowan Old Style', Palatino, Georgia, serif`; g.textAlign = 'center'; g.lineJoin = 'round'
+    for (const n of nodes.values()) {
+      if (!/^F\d$|^ferry$|village$|camp$|^gorge$/.test(n.id)) continue
+      const yy = Y(n.y) + 26 * S
+      g.lineWidth = 5 * S; g.strokeStyle = 'rgba(242,233,216,.9)'; g.strokeText(n.name, X(n.x), yy); g.fillStyle = '#2e2418'; g.fillText(n.name, X(n.x), yy)
+    }
+    return
+  }
   g.fillStyle = '#e6dcc4'; g.fillRect(X(0), Y(0), 1000 * S, 1000 * S)
   g.strokeStyle = '#c9d3cf'; g.lineWidth = 70 * S; g.beginPath(); g.moveTo(X(0), Y(500)); g.lineTo(X(1000), Y(500)); g.stroke()
   for (const n of nodes.values()) if (n.mist) {
@@ -254,13 +267,13 @@ function draw() {
     ctx.strokeStyle = COLOR[c.house]; ctx.lineWidth = 4.5 * S; ctx.stroke()
   }
   // squads
-  ctx.font = `bold ${8 * S}px ui-sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+  ctx.font = `bold ${12 * S}px ui-sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
   squadInfo.forEach((s, i) => {
     const p = pos[i]
     if (p.flags & 2) return
     ctx.globalAlpha = p.flags & 1 ? 0.4 : 1
-    ctx.fillStyle = COLOR[s.house]; ctx.strokeStyle = '#1e1c1a'; ctx.lineWidth = 1 * S
-    shape(s.type, X(p.x), Y(p.y), (5 + p.str / 25) * S); ctx.fill(); ctx.stroke()
+    ctx.fillStyle = COLOR[s.house]; ctx.strokeStyle = '#f2e9d8'; ctx.lineWidth = 2.5 * S // cream rim: reads on the painted ground
+    ctx.shadowColor = '#0008'; ctx.shadowBlur = 4 * S; shape(s.type, X(p.x), Y(p.y), (9 + p.str / 14) * S); ctx.fill(); ctx.shadowBlur = 0; ctx.stroke()
     ctx.fillStyle = '#fff'; ctx.fillText({ inf: 'I', arch: 'A', cav: 'C', ele: 'E' }[s.type as string]! + (s.id.endsWith('-2') ? '2' : ''), X(p.x), Y(p.y) + 0.5)
   })
   ctx.globalAlpha = 1
