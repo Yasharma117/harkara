@@ -353,7 +353,20 @@ function feed() {
   const out: string[] = []
   let prev = '', first = '', rep = 1
   for (let i = n - 1; i >= 0 && out.length < 80; i--) {
-    const l = line(events[i])
+    const e = events[i]
+    // one general's orders sent in the same watch read as one dispatch, not a wall of near-identical lines
+    if (e.type === 'courier' && e.kind === 'order' && letters.get(e.letter)?.id === e.id) {
+      const w = Math.floor(e.t / TPW), group: Ev[] = []
+      while (i >= 0 && events[i].type === 'courier' && events[i].kind === 'order' && events[i].house === e.house && Math.floor(events[i].t / TPW) === w) { if (letters.get(events[i].letter)?.id === events[i].id) group.unshift(events[i]); i-- }
+      i++
+      if (group.length > 1) {
+        const how = group.every(g => g.cipher) ? 'ciphered' : group.every(g => !g.cipher) ? 'plain' : 'mixed'
+        out.push(`<div class="item" style="--c:${COLOR[e.house]}">${W(e)} <b>${e.house}</b> sends ${group.length} ${how} orders${group.some(g => g.double) ? ', each by two riders' : ''}:${group.map(g => `<br><span class="mono">${g.plain}</span>`).join('')}</div>`)
+        prev = ''
+        continue
+      }
+    }
+    const l = line(e)
     if (!l) continue
     const key = l.replace(/<small>w\d+<\/small>/, '') // the same line in another watch still counts as a repeat
     if (key === prev) { rep++; out[out.length - 1] = first.replace(/<\/div>$/, ` <small>×${rep}</small></div>`); continue }
