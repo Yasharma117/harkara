@@ -25,14 +25,14 @@ Drop the PNGs in `harkara/assets/raw/` (or attach them in chat). I run `npm run 
 ## 4. Launch (cycle 5)
 1. **Oracle ports.** In the Oracle console: Networking → your VCN → Security Lists → Default → Add Ingress Rules: source `0.0.0.0/0`, TCP, destination ports `80,443`. (The box's own firewall is opened by cloud-init.)
 2. Run `harkara-setup` on the box. At the end it prints the ladder API address, e.g. `https://129-154-1-2.sslip.io`. Free HTTPS, no domain needed.
-3. **Vercel.** vercel.com → Add New → Project → import `Yasharma117/harkara`. Settings come from `vercel.json`; leave them. Under Environment Variables add `VITE_LADDER_API` = the address from step 2. Deploy.
-4. Send me the Vercel URL. I set it as the API's allowed origin and run the first ladder night.
+3. **Cloudflare Pages.** dash.cloudflare.com → Workers & Pages → Create → Pages → Connect to Git → pick `Yasharma117/harkara`. Framework preset: None. Build command: `npm ci --ignore-scripts && npm run build` (skips the voice tool's native downloads, which the site doesn't need). Build output directory: `client/dist`. Under Environment variables add `NODE_VERSION` = `24` and `VITE_LADDER_API` = the address from step 2. Save and deploy. Caching comes from `client/public/_headers`.
+4. Send me the `*.pages.dev` URL. I set it as the API's allowed origin and run the first ladder night.
 
 ## What runs every night on the box (02:00 IST)
 1. The daily battle with the four model generals (Groq / NVIDIA / OpenRouter, local model as fallback).
 2. The Doctrine Ladder: tonight's entries, every house on the local Gemma 4 E4B, so only the doctrines differ.
 3. Every new battle is voiced (one voice per general).
-4. All of it is pushed to `battle/<date>` for review; merge it to publish (Vercel redeploys on merge).
+4. All of it is pushed to `battle/<date>` for review; merge it to publish (Cloudflare Pages redeploys on merge).
 
 ## Known gaps
 - Voice: the nightly voices each new battle with Kokoro-82M on the CPU (`node tools/voice.ts <battle>` by hand). Listen to a few and tell me if it sounds cheap; the spec says drop it if so.

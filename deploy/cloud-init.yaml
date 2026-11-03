@@ -42,14 +42,14 @@ write_files:
       done
       # the ladder API's visitor hashes need a salt that survives restarts (one entry per visitor per day)
       grep -q '^LADDER_SALT=' .env 2>/dev/null || echo "LADDER_SALT=$(openssl rand -hex 16)" >> .env
-      read -rp "Site address for the ladder API's CORS, e.g. https://harkara.vercel.app (Enter for any): " ORIGIN
+      read -rp "Site address for the ladder API's CORS, e.g. https://harkara.pages.dev (Enter for any): " ORIGIN
       [ -n "$ORIGIN" ] && echo "ALLOW_ORIGIN=$ORIGIN" >> .env
       umask 022
       # HTTPS for the ladder API with no domain to buy: <ip>.sslip.io resolves to this box, and Caddy gets a certificate for it
       HOST="$(curl -fsS https://ifconfig.me | tr . -).sslip.io"
       printf '%s {\n  reverse_proxy /api/* 127.0.0.1:8787\n}\n' "$HOST" | sudo tee /etc/caddy/Caddyfile >/dev/null
       sudo systemctl enable --now harkara-api && sudo systemctl reload caddy
-      echo; echo "Ladder API: https://$HOST/api/ladder  (set VITE_LADDER_API=https://$HOST in Vercel, then redeploy)"
+      echo; echo "Ladder API: https://$HOST/api/ladder  (set VITE_LADDER_API=https://$HOST in Cloudflare Pages, then redeploy)"
       echo; echo "Checking every model in engine/providers.json:"
       node --env-file=.env engine/check.ts || true
       sudo systemctl enable --now harkara-battle.timer

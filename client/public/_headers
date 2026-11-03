@@ -1,0 +1,9 @@
+# Cloudflare Pages caching. Hashed bundles never change; art and models change rarely; replays update nightly.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+/art/*
+  Cache-Control: public, max-age=86400
+/models/*
+  Cache-Control: public, max-age=86400
+/replay/*
+  Cache-Control: public, max-age=300
