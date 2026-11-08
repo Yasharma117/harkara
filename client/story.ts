@@ -63,7 +63,7 @@ export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<stri
         if (!e.readable || firstDecode.has(e.letter)) break
         firstDecode.add(e.letter)
         say(e, `<b style="color:${COLOR[e.house]}">${CAP(e.house)}</b> has <b>broken the cipher</b> on a captured ${L?.house ? `${CAP(L.house)} ` : ''}letter: <span class="mono">${e.text}</span> They know the plan.`, COLOR[e.house], 190,
-          L ? { from: L.house, to: toName(L.to), seal: 'broken', head: `${CAP(e.house)}'s clerks break the cipher`, cipher: L.cipher, plain: L.plain, reveal: true } : undefined)
+          L ? { from: L.house, to: toName(L.to), seal: 'broken', head: `${CAP(e.house)}'s clerks break the cipher`, cipher: L.cipher, plain: e.text, reveal: true } : undefined)
         break
       case 'truce':
         if (truces.has([e.a, e.b].sort().join())) break // the same pact renewed isn't news
@@ -115,6 +115,7 @@ export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<stri
     sheet.innerHTML = `<div class="lt-in" style="--c:${c}"><div class="lt-head">${l.head}</div><img class="lt-seal" src="art/seal-${l.seal}.webp" alt=""><div class="lt-from">From <b style="color:${c}">${CAP(l.from)}</b> to ${l.to}</div><p class="lt-body"></p></div>`
     sheet.classList.add('on')
     const body = sheet.querySelector('.lt-body')!, src = l.cipher ?? l.plain, dst = l.plain, t0 = performance.now()
+    if (!l.cipher) { body.textContent = l.plain; sheetTimer = window.setTimeout(() => sheet.classList.remove('on'), 5200); return } // written plain: legible at once, no scramble
     // each letter settles at its own moment, so the plan surfaces word by word
     const order = [...dst].map((_, k) => 0.35 + ((k * 7919) % 97) / 97 * 1.6)
     const step = () => {

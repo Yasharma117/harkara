@@ -74,8 +74,8 @@ addEventListener('hashchange', () => {
   const [h, ht] = location.hash.slice(1).split('@')
   if (h !== id) location.reload(); else if (ht) { t = Number(ht); setPlaying(false) }
 })
-let tab = 'feed', sel: string | null = null
-group('tabs', [['Feed', 'feed'], ['Mailbag', 'mail']], v => { tab = v; $('feed').hidden = v !== 'feed'; $('mail').hidden = v !== 'mail'; shown = -1 }, tab)
+let tab = 'feed', sel: string | null = null, allFeed = false
+group('tabs', [['Headlines', 'feed'], ['All dispatches', 'all'], ['Mailbag', 'mail']], v => { tab = v === 'all' ? 'feed' : v; allFeed = v === 'all'; $('feed').hidden = tab !== 'feed'; $('mail').hidden = tab !== 'mail'; shown = -1 }, tab)
 document.onkeydown = e => { if (e.code === 'Space' && e.target === document.body) { e.preventDefault(); setPlaying(!playing) } }
 // batch-3 art when present (npm run assets); flat swatches otherwise
 const art: Record<string, unknown> = await fetch('art/art.json').then(r => (r.ok ? r.json() : {})).catch(() => ({}))
@@ -90,6 +90,7 @@ if (!hashT && params.get('ladder') === null) {
   ts.innerHTML = `<div class="tt-in"><div class="tt-deva" lang="hi">हरकारा</div><h1>HARKARA</h1>
     <p>Four AI models command four houses in a river war. None of them can see the battlefield: every order is carried by a rider who can be caught, shot or lost, and every captured letter can be read.</p>
     <div class="tt-btns"><button data-a="rules">The rules</button><button data-a="start" class="tt-go">Watch today’s battle</button><button data-a="ladder">Doctrine Ladder</button></div>
+    ${init.houses.every((h: any) => h.model === 'scripted') ? '<p class="tt-note">This is a rehearsal battle fought by simple code generals. The daily AI battles start at launch.</p>' : ''}
     <small>${manifest.watches} watches · ${init.houses.map((h: any) => `<b style="color:${COLOR[h.id]}">${h.name}</b>`).join(' · ')}</small></div>
     <div class="tt-rules" hidden><h2>The rules</h2><ol>
     <li><b>Win</b> by holding two of the three fords when the last watch ends, or by taking an enemy camp’s standard.</li>
@@ -111,7 +112,7 @@ vo = await voice(id, init.houses, COLOR, h => A(`portrait-${h}`), $('stage'))
 $('ladder-open').before(vo.button)
 const sfx = soundscape(); sfx.set(vo.on); vo.onToggle(v => sfx.set(v))
 if (params.get('ladder') !== null || location.hash === '#ladder') lad.open()
-$('houses').innerHTML = init.houses.map((h: any) => `<div class="house" data-h="${h.id}" tabindex="0" style="--c:${COLOR[h.id]}">${A(`portrait-${h.id}`) ? `<img class="portrait" src="${A(`portrait-${h.id}`)}" alt="">` : ''}<div><div class="hname">${emblem(h.id)}<b>${h.name}</b><small>${h.id} · ${h.model}</small></div><i>“${h.line}”</i></div></div>`).join('')
+$('houses').innerHTML = init.houses.map((h: any) => `<div class="house" data-h="${h.id}" tabindex="0" style="--c:${COLOR[h.id]}">${A(`portrait-${h.id}`) ? `<img class="portrait" src="${A(`portrait-${h.id}`)}" alt="">` : ''}<div><div class="hname">${emblem(h.id)}<b>${h.name}</b><small>${h.id} · ${h.model === 'scripted' ? 'test general' : h.model.split(' → ')[0].split('/').pop()}</small></div><i>“${h.line}”</i></div></div>`).join('')
 
 // ---- streaming load: playback starts after watch 1
 ;(async () => {
@@ -214,6 +215,7 @@ function draw() {
   ctx.drawImage(bg, 0, 0)
   const { a, b, k } = frameAt(t)
   const pos = squadInfo.map((_, i) => ({ x: lerp(a.s[i * 4], b.s[i * 4], k), y: lerp(a.s[i * 4 + 1], b.s[i * 4 + 1], k), str: a.s[i * 4 + 2], flags: a.s[i * 4 + 3] }))
+  fordStrip(pos)
   // belief ghosts: where the chosen general thinks every unit is
   const ghosts: { house: string; type: string; x: number; y: number; tx: number; ty: number; age: number }[] = []
   if (beliefOf) {
@@ -344,7 +346,9 @@ function director(tt: number, pos: { x: number; y: number; flags: number }[]) {
 // ---- feed
 const name = (sid: string) => { const s = squadInfo.find(x => x.id === sid); return s ? `${s.house} ${s.name}` : sid.replace('-camp', '') }
 const W = (e: Ev) => `<small>w${Math.floor(e.t / TPW) + 1}</small>`
+const HEADLINE = new Set(['caught', 'killed', 'decode', 'truce', 'smoke', 'standard', 'destroyed', 'end', 'intel'])
 function line(e: Ev): string | null {
+  if (!allFeed && (!HEADLINE.has(e.type) || (e.type === 'decode' && !e.readable))) return null // headlines: only what changes the story
   const L = letters.get(e.letter)
   switch (e.type) {
     case 'thought': return `<div class="item" style="--c:${COLOR[e.house]}">${W(e)} <b>${e.house}</b> thinks: ${e.text.replace(/\b0 watches ago/g, 'just now').replace(/\b1 watches\b/g, '1 watch')}</div>`
@@ -372,7 +376,7 @@ function feed() {
   for (let i = n - 1; i >= 0 && out.length < 80; i--) {
     const e = events[i]
     // one general's orders sent in the same watch read as one dispatch, not a wall of near-identical lines
-    if (e.type === 'courier' && e.kind === 'order' && letters.get(e.letter)?.id === e.id) {
+    if (allFeed && e.type === 'courier' && e.kind === 'order' && letters.get(e.letter)?.id === e.id) {
       const w = Math.floor(e.t / TPW), group: Ev[] = []
       while (i >= 0 && events[i].type === 'courier' && events[i].kind === 'order' && events[i].house === e.house && Math.floor(events[i].t / TPW) === w) { if (letters.get(events[i].letter)?.id === events[i].id) group.unshift(events[i]); i-- }
       i++
@@ -480,6 +484,49 @@ function dispatchCard(lid: string, captor: string) {
   })
 }
 
+// ---- who holds each ford right now, by the same rule that decides the battle: one house alone within reach of it
+const strip = document.createElement('div'); strip.id = 'fords'; $('stage').append(strip)
+let stripKey = ''
+function fordStrip(pos: { x: number; y: number; flags: number }[]) {
+  const held = init.map.fords.map((f: string) => {
+    const n = nodes.get(f), hs = [...new Set(pos.flatMap((p, i) => !(p.flags & 3) && Math.hypot(p.x - n.x, p.y - n.y) < 50 ? [squadInfo[i].house] : []))]
+    return { name: n.name.replace(' FORD', '').toLowerCase(), h: hs.length === 1 ? hs[0] : null, fight: hs.length > 1 }
+  })
+  const two = HOUSES.find(h => held.filter((f: any) => f.h === h).length >= 2)
+  const key = JSON.stringify(held) + two
+  if (key === stripKey) return
+  stripKey = key
+  strip.innerHTML = `<span class="fd-t">Fords</span>${held.map((f: any) => `<span class="fd" style="--c:${f.h ? COLOR[f.h] : '#8a7d66'}"><i></i>${f.name} <b>${f.h ? f.h : f.fight ? 'contested' : 'empty'}</b></span>`).join('')}${two ? `<span class="fd-win" style="--c:${COLOR[two]}">${two} holds two</span>` : ''}`
+}
+
+// ---- the ending: who won, why, and what each general's mail cost it
+const cap = (h: string) => h[0].toUpperCase() + h.slice(1)
+const endCard = document.createElement('div'); endCard.id = 'endcard'; endCard.hidden = true; $('stage').append(endCard)
+endCard.onclick = () => (endCard.hidden = true)
+let endShown = false
+function ending() {
+  const fin = events.find(e => e.type === 'end')
+  if (!fin || !end) return
+  if (t < fin.t) { endShown = false; endCard.hidden = true; return }
+  if (endShown) return
+  endShown = true
+  const per = (h: string, type: string, key: string) => events.filter(e => e.type === type && (key === 'house' ? e.house === h : String(e.by ?? '').startsWith(h))).length
+  const fordName = (f: string) => nodes.get(f).name.toLowerCase()
+  const held = Object.entries(end.fords as Record<string, string | null>)
+  const why = /two fords/.test(fin.reason) ? `${cap(fin.winner)} held two of the three fords at the last watch.`
+    : /standard/i.test(fin.reason) ? fin.reason + '.'
+    : `Nobody held two fords at the last watch, so the battle went to points: 100 for each ford held alone, plus every surviving soldier.`
+  const rows = HOUSES.slice().sort((a, b) => end.scores[b] - end.scores[a])
+  endCard.innerHTML = `<div class="ec-in"><small>Watch ${manifest.watches} · the battle is over</small>
+    <h2 style="color:${COLOR[fin.winner]}">${init.houses.find((h: any) => h.id === fin.winner)?.name ?? cap(fin.winner)} wins</h2>
+    <p>${why}</p>
+    <div class="ec-fords">${held.map(([f, h]) => `<span style="--c:${h ? COLOR[h] : '#8a7d66'}"><i></i>${fordName(f)}: <b>${h ? cap(h) : 'nobody'}</b></span>`).join('')}</div>
+    <table><tr><th></th><th>Score</th><th>Riders lost</th><th>Letters taken</th><th>Ciphers broken</th></tr>
+    ${rows.map(h => `<tr><td><b style="color:${COLOR[h]}">${cap(h)}</b></td><td>${end.scores[h]}</td><td>${per(h, 'caught', 'house') + per(h, 'killed', 'house')}</td><td>${per(h, 'caught', 'by')}</td><td>${events.filter(e => e.type === 'decode' && e.readable && e.house === h).length}</td></tr>`).join('')}</table>
+    <p class="ec-hint">Open the Mailbag to read every letter, or scrub back to any moment.</p></div>`
+  endCard.hidden = false
+}
+
 // ---- general cards: a card pulses when its general acts (sends, catches, decodes, makes a truce)
 const ACT = new Set(['caught', 'killed', 'decode', 'truce', 'smoke']) // real moments only: everyone sends orders all the time
 let pulsed = -1
@@ -512,7 +559,7 @@ function loop(now: number) {
   if (playing && t >= TOTAL) setPlaying(false)
   scrub.value = String(Math.floor(t))
   $('clock').textContent = `Watch ${Math.min(manifest.watches, Math.floor(t / TPW) + 1)}/${manifest.watches}`
-  draw(); feed(); vo?.tick(events, t, playing, speed); tale?.tick(t); pulseCards(); sfx.tick(events, t, playing, TPW)
+  draw(); feed(); vo?.tick(events, t, playing, speed); tale?.tick(t); pulseCards(); ending(); sfx.tick(events, t, playing, TPW)
 }
 addEventListener('resize', resize)
 resize()
