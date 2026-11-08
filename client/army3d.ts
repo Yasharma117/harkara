@@ -9,8 +9,8 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js'
 type Sq = { id: string; house: string; type: string; x: number; y: number; str: number; flags: number }
 type Kind = 'inf' | 'arch' | 'cav'
 const PER: Record<Kind, number> = { inf: 12, arch: 8, cav: 5 }
-const COLS: Record<Kind, number> = { inf: 4, arch: 4, cav: 3 }
-const GAP: Record<Kind, number> = { inf: 15, arch: 16, cav: 30 }
+const COLS: Record<Kind, number> = { inf: 6, arch: 8, cav: 5 } // battle lines, not huddles: two ranks of foot, archers and horse abreast
+const GAP: Record<Kind, number> = { inf: 17, arch: 16, cav: 26 }
 const HEIGHT = { foot: 34, horse: 34, rider: 27 }
 const MELEE = ['1H_Melee_Attack_Chop', '1H_Melee_Attack_Slice_Diagonal', '1H_Melee_Attack_Stab', '1H_Melee_Attack_Slice_Horizontal', 'Block_Attack']
 
