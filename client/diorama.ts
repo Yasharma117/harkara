@@ -17,7 +17,7 @@ export interface Snap {
 }
 
 const HOUSE: Record<string, THREE.Color> = { rhino: new THREE.Color('#34418f'), kite: new THREE.Color('#b3242f'), orchid: new THREE.Color('#b13f9a'), tiger: new THREE.Color('#e3a812') }
-const SIZE: Record<string, number> = { inf: 40, arch: 40, cav: 50, ele: 76, harkara: 30 }
+const SIZE: Record<string, number> = { inf: 40, arch: 40, cav: 50, ele: 58, harkara: 30 }
 // full-strength formation per unit type: soldiers, columns, spacing (paces)
 const FORM: Record<string, [number, number, number]> = { inf: [18, 6, 16], arch: [18, 6, 16], cav: [12, 4, 19], ele: [4, 2, 38] }
 const PER_SQUAD = 25
@@ -422,7 +422,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
         if (bb && !near.some(o => o.house === q.house)) {
           standards.push({ x: q.x, y: q.y, house: q.house })
           // on the pole tip (the pole stands at 35% of the pennant art's width); a second house at the spot steps aside
-          const D = q.type === 'ele' ? 40 : 34, px = fx - 0.15 * fh * (flag?.aspect ?? 0.667) * flip + touching * 46, lift = fh * 0.95
+          const D = q.type === 'ele' ? 30 : 26, px = fx - 0.15 * fh * (flag?.aspect ?? 0.667) * flip + touching * 46, lift = fh * 0.95
           const eh = Math.min(D * 0.5, (D * 0.74) / bb.aspect), ey = lift + (D - eh) / 2
           place(roundel.mesh, rn++, px, fy + 0.5, D, D, yaw, 0, lift)
           place(ob.mesh, bn[q.house], px, fy + 1, eh * 1.14 * bb.aspect * flip, eh * 1.14, yaw, 0, ey - eh * 0.07); ob.tint.setXYZ(bn[q.house], 0.1, 0.08, 0.06)

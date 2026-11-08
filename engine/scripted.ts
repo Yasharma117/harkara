@@ -65,6 +65,30 @@ export function scripted(h: HouseId): General {
           if (sent !== undefined) notes.push(`No word that ${s.name} reached ${node(w).name}; last seen ${s.place}, ${age(s)} watches ago. Resending.`)
         }
       }
+      // ---- aggression: generals that only hold fords make dull battles. Strike where reports say the enemy is weak,
+      // hunt with horse, and go all in on the fords late. Acting on old reports is the point: sometimes the strike lands
+      // on empty ground, sometimes on a stronger army that moved in since.
+      const nearestNode = (x: number, y: number) => NODES.reduce((a, n) => (dist(n, { x, y }) < dist(a, { x, y }) ? n : a))
+      const foes = v.enemies.filter(s => !v.truces.includes(s.house) && age(s) <= 4)
+      const free = (types: string[]) => v.own.filter(s => types.includes(s.type) && !orders.some(o => o.to === s.id) && (lastSent.get(s.id) ?? -9) < v.watch - 2)
+      if (v.watch >= 4 && v.watch % 3 === (['rhino', 'kite', 'orchid', 'tiger'].indexOf(h) % 3)) {
+        // the weakest enemy reported near one of our fords: send our strongest free squad at it
+        const near = foes.filter(s => [p.a, p.b, ...FORDS].some(f => dist(s, node(f)) < 160)).sort((x, y) => x.strength - y.strength)[0]
+        const hammer = free(['ele', 'inf', 'cav']).sort((x, y) => y.strength - x.strength)[0]
+        if (near && hammer) {
+          const at = nearestNode(near.x, near.y).id
+          override.set(hammer.id, at); order(hammer.id, 'attack', at)
+          notes.push(`${near.house} ${near.name} looks weak at ${near.place} (report ${age(near)} watches old). ${hammer.name} attack.`)
+        }
+      }
+      const horse = free(['cav'])[0], prey = foes.filter(s => s.type === 'arch' || s.type === 'inf').sort((x, y) => dist(x, horse ?? x) - dist(y, horse ?? y))[0]
+      if (horse && prey && v.watch >= 6 && v.watch % 4 === 1) { const at = nearestNode(prey.x, prey.y).id; override.set(horse.id, at); order(horse.id, 'attack', at); notes.push(`Horse ride down ${prey.house} ${prey.name} at ${prey.place}.`) }
+      if (v.watch >= 21 && v.watch % 3 === 0) {
+        // the last push: everything onto the ford we don't hold that has the fewest enemies reported at it
+        const target = FORDS.filter(f => !v.own.some(s => dist(s, node(f)) < 50)).sort((x, y) => foes.filter(s => dist(s, node(x)) < 120).length - foes.filter(s => dist(s, node(y)) < 120).length)[0]
+        if (target) for (const s of free(['inf', 'ele', 'arch'])) { override.set(s.id, target); order(s.id, 'attack', target) }
+        if (target) notes.push(`Last watches. Everything to ${node(target).name}.`)
+      }
       const d: Decision = { thought: '', orders: orders.slice(0, 3) }
       if (h === 'orchid' && v.watch % 3 === 0) d.decoy = { to: `${h}-cav-1`, verb: 'attack', where: 'F3' }
       const l = LETTERS[h]

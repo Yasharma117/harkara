@@ -8,15 +8,15 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js'
 
 type Sq = { id: string; house: string; type: string; x: number; y: number; str: number; flags: number }
 type Kind = 'inf' | 'arch' | 'cav'
-const PER: Record<Kind, number> = { inf: 12, arch: 8, cav: 5 }
-const COLS: Record<Kind, number> = { inf: 6, arch: 8, cav: 5 } // battle lines, not huddles: two ranks of foot, archers and horse abreast
-const GAP: Record<Kind, number> = { inf: 17, arch: 16, cav: 26 }
-const HEIGHT = { foot: 34, horse: 34, rider: 27 }
+const PER: Record<Kind, number> = { inf: 24, arch: 16, cav: 8 }
+const COLS: Record<Kind, number> = { inf: 8, arch: 8, cav: 4 } // battle lines, not huddles: two ranks of foot, archers and horse abreast
+const GAP: Record<Kind, number> = { inf: 13, arch: 13, cav: 22 }
+const HEIGHT = { foot: 26, horse: 28, rider: 21 }
 const MELEE = ['1H_Melee_Attack_Chop', '1H_Melee_Attack_Slice_Diagonal', '1H_Melee_Attack_Stab', '1H_Melee_Attack_Slice_Horizontal', 'Block_Attack']
 
 interface Fig { root: THREE.Object3D; mixer: THREE.AnimationMixer; acts: Map<string, THREE.AnimationAction>; cur: string; dead: boolean; rider?: Fig; x: number; y: number; yaw: number; diedAt: number; hitUntil: number }
 type Mode = 'walk' | 'run' | 'fight' | 'shoot' | 'idle'
-interface Unit { kind: Kind; house: string; figs: Fig[]; lx: number; ly: number; yaw: number; shotAt: number; seen: boolean; spd: number; mode: Mode; next: Mode; nextAt: number }
+interface Unit { kind: Kind; house: string; figs: Fig[]; lx: number; ly: number; yaw: number; shotAt: number; seen: boolean; spd: number; mode: Mode; next: Mode; nextAt: number; fightAt: number }
 
 export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?: number) => THREE.Vector3, squads: { id: string; house: string; type: string }[], HOUSE: Record<string, THREE.Color>) {
   const loader = new GLTFLoader()
@@ -89,7 +89,7 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
         figs.push(f)
       }
     }
-    units.set(s.id, { kind, house: s.house, figs, lx: NaN, ly: NaN, yaw: 0, shotAt: 0, seen: false, spd: 0, mode: 'idle', next: 'idle', nextAt: 0 })
+    units.set(s.id, { kind, house: s.house, figs, lx: NaN, ly: NaN, yaw: 0, shotAt: 0, seen: false, spd: 0, mode: 'idle', next: 'idle', nextAt: 0, fightAt: -9 })
   }
 
   function play(f: Fig, name: string, once = false, fade = 0.25) {
@@ -149,7 +149,8 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
         // a squad changes what it's doing only once the new state has held for a moment, so ranks never stutter between poses
         const raw: Mode = routed || speed > (u.kind === 'cav' ? 45 : 30) ? 'run' : moving ? 'walk' : fighting ? 'fight' : shooting ? 'shoot' : 'idle'
         if (raw !== u.next) { u.next = raw; u.nextAt = clock }
-        if (u.next !== u.mode && (clock - u.nextAt > 0.4 || !u.seen)) u.mode = u.next
+        if (u.next !== u.mode && (clock - u.nextAt > 0.4 || !u.seen)) { if (u.next === 'fight' && u.seen) u.fightAt = clock; u.mode = u.next }
+        const charging = u.mode === 'fight' && clock - u.fightAt < 1.3 // the first moments of contact: the line runs in
         const mode = u.mode
         const want = moving ? Math.atan2(dx, dy) : foe && fd < 400 ? Math.atan2(foe.x - q.x, foe.y - q.y) : u.yaw
         let dyaw = ((want - u.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI
@@ -169,11 +170,11 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
             const jx = ((i * 37) % 7) - 3, jy = ((i * 53) % 5) - 2
             f.x = q.x + gx * cos + gy * sin + jx; f.y = q.y - gx * sin + gy * cos + jy; f.yaw = u.yaw
             // in a fight the block presses forward into contact, front ranks surging and falling back
-            if (mode === 'fight' && foe) { const k = Math.min(45, Math.max(0, fd - 55) * 0.5) + Math.sin(clock * 3 + i) * 4; f.x += Math.sin(u.yaw) * k; f.y += Math.cos(u.yaw) * k }
+            if (mode === 'fight' && foe) { const k = Math.min(45, Math.max(0, fd - 55) * 0.5) * (charging ? 0.4 + (clock - u.fightAt) / 2.2 : 1) + Math.sin(clock * 3 + i) * 4; f.x += Math.sin(u.yaw) * k; f.y += Math.cos(u.yaw) * k }
             if (mode === 'fight' && clock > f.hitUntil + 1.2 && Math.random() < adt * 0.5) f.hitUntil = clock + 0.6 // takes a blow now and then
             const ts = moving ? THREE.MathUtils.clamp(speed / (u.kind === 'cav' ? 60 : 22), 0.6, 2.6) : 1
-            if (u.kind === 'cav') play(f, mode === 'run' ? 'Gallop' : mode === 'walk' ? 'Walk' : mode === 'fight' ? (i % 2 ? 'Attack_Kick' : 'Attack_Headbutt') : 'Idle')
-            else play(f, mode === 'run' ? 'Running_A' : mode === 'walk' ? 'Walking_A' : mode === 'fight' ? (clock < f.hitUntil ? (i % 2 ? 'Hit_A' : 'Block_Hit') : MELEE[i % MELEE.length]) : mode === 'shoot' ? '2H_Ranged_Shooting' : u.kind === 'arch' ? '2H_Ranged_Aiming' : 'Idle')
+            if (u.kind === 'cav') play(f, mode === 'run' || charging ? 'Gallop' : mode === 'walk' ? 'Walk' : mode === 'fight' ? (i % 2 ? 'Attack_Kick' : 'Attack_Headbutt') : 'Idle')
+            else play(f, mode === 'run' || (charging && u.kind === 'inf') ? 'Running_A' : mode === 'walk' ? 'Walking_A' : mode === 'fight' ? (clock < f.hitUntil ? (i % 2 ? 'Hit_A' : 'Block_Hit') : MELEE[i % MELEE.length]) : mode === 'shoot' ? '2H_Ranged_Shooting' : u.kind === 'arch' ? '2H_Ranged_Aiming' : 'Idle')
             f.mixer.timeScale = ts
           }
           if (!(f.dead && clock - f.diedAt > 5)) f.root.position.copy(W(f.x, f.y, 0))
