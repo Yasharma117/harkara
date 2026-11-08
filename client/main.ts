@@ -301,7 +301,9 @@ function draw() {
 
 // ---- camera director: look ahead ~9 game seconds, pick the best moment, hold it until just after it happens
 const SCORE: Record<string, number> = { standard: 10, killed: 8, caught: 8, decode: 6, truce: 5, clash: 3 }
-let shot: { x: number; y: number; from: number; until: number } | null = null
+let shot: { x: number; y: number; from: number; until: number; r?: number } | null = null
+// how close the camera pushes in for each kind of moment: a capture or a broken cipher is personal, a clash is wide
+const LENS: Record<string, number> = { standard: 460, caught: 520, killed: 540, decode: 500, truce: 600, clash: 680 }
 // a shot needs context: two houses in frame, or one house at a named landmark (ford, ferry, camp, village)
 const LANDMARK = [...nodes.values()].filter((n: any) => /^F\d|ferry|-camp|village/.test(n.id))
 function context(at: { x: number; y: number }, pos: { x: number; y: number; flags: number }[]) {
@@ -310,7 +312,7 @@ function context(at: { x: number; y: number }, pos: { x: number; y: number; flag
 }
 function director(tt: number, pos: { x: number; y: number; flags: number }[]) {
   if (shot && tt >= shot.from && tt < shot.until) return shot
-  let best: { x: number; y: number; s: number; t: number } | null = null
+  let best: { x: number; y: number; s: number; t: number; type: string } | null = null
   for (const e of events) {
     if (e.t <= tt) continue
     if (e.t > tt + 240) break
@@ -318,9 +320,9 @@ function director(tt: number, pos: { x: number; y: number; flags: number }[]) {
     if (!sc || (e.type === 'decode' && !e.readable)) continue
     if ((e.type === 'caught' || e.type === 'killed') && letters.get(e.letter)?.kind === 'report') sc = 4
     const at = e.x != null ? e : nodes.get(`${e.type === 'truce' ? e.a : e.house}-camp`)
-    if (at && context(at, pos) && (!best || sc > best.s)) best = { x: at.x, y: at.y, s: sc, t: e.t }
+    if (at && context(at, pos) && (!best || sc > best.s)) best = { x: at.x, y: at.y, s: sc, t: e.t, type: e.type }
   }
-  if (best) return (shot = { x: best.x, y: best.y, from: tt, until: best.t + 40 })
+  if (best) return (shot = { x: best.x, y: best.y, from: tt, until: best.t + (best.s >= 6 ? 110 : 40), r: LENS[best.type] }) // big moments hold a beat longer
   // nothing big coming: go back to where the latest action was (its ring may still be showing), if it was recent
   for (let i = events.length - 1; i >= 0; i--) {
     const e = events[i]

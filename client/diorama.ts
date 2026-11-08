@@ -13,7 +13,7 @@ export interface Snap {
   flashes: { type: string; x: number; y: number; age: number }[]
   smokes: { x: number; y: number; age: number }[] // smoke signals lit at a camp, age 0→1
   ghosts: { house: string; type: string; x: number; y: number; tx: number; ty: number }[] // belief view: where a general thinks units are
-  shot: { x: number; y: number } | null // the camera director's pick, used when nobody is driving
+  shot: { x: number; y: number; r?: number } | null // the camera director's pick, used when nobody is driving; r = how close
 }
 
 const HOUSE: Record<string, THREE.Color> = { rhino: new THREE.Color('#34418f'), kite: new THREE.Color('#b3242f'), orchid: new THREE.Color('#b13f9a'), tiger: new THREE.Color('#e3a812') }
@@ -341,7 +341,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
     } else if (follow) label = follow.seen ? 'The ride is over' : 'Waiting for the rider to leave camp'
     else if (!idle) return label
     else if (s.shot) {
-      want.t.copy(W(s.shot.x, s.shot.y)); want.r = 720; want.polar = 0.86
+      want.t.copy(W(s.shot.x, s.shot.y)); want.r = s.shot.r ?? 720; want.polar = want.r < 500 ? 0.95 : 0.86 // close shots drop lower, nearer eye level
       want.az = Math.sin(now / 11000) * 0.28 // a slow drift around the action while it holds, like a crane on a set
       const far = controls.target.distanceTo(want.t)
       if (far > 250) want.r += Math.min(650, far * 0.7) // far to go: rise up and over rather than slide along the ground
