@@ -52,7 +52,7 @@ export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<stri
     switch (e.type) {
       case 'caught':
         if (L?.kind === 'report') break
-        say(e, `<b style="color:${COLOR[e.house]}">${CAP(e.house)}'s</b> rider is <b>captured</b> by ${squadName(e.by)}. ${CAP(e.by.split('-')[0])} now holds ${what}${text ? `: ${text}` : ''}${L?.cipher ? ', but it is in cipher. Their clerks start decoding.' : ', written plain. They can read it at once.'}`, COLOR[e.by.split('-')[0]], 170,
+        say(e, `<b style="color:${COLOR[e.house]}">${CAP(e.house)}'s</b> rider is <b>captured</b> by ${squadName(e.by)}. ${CAP(e.by.split('-')[0])} now holds ${what}${text && !L?.cipher ? `: ${text}` : ''}${L?.cipher ? ', but it is in cipher. Their clerks start decoding.' : ', written plain. They can read it at once.'}`, COLOR[e.by.split('-')[0]], 170,
           L ? { from: L.house, to: toName(L.to), seal: 'broken', head: `Taken by ${squadName(e.by)}`, cipher: L.cipher, plain: L.plain, reveal: !L.cipher } : undefined)
         break
       case 'killed':

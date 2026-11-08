@@ -348,7 +348,7 @@ const name = (sid: string) => { const s = squadInfo.find(x => x.id === sid); ret
 const W = (e: Ev) => `<small>w${Math.floor(e.t / TPW) + 1}</small>`
 const HEADLINE = new Set(['caught', 'killed', 'decode', 'truce', 'smoke', 'standard', 'destroyed', 'end', 'intel'])
 function line(e: Ev): string | null {
-  if (!allFeed && (!HEADLINE.has(e.type) || (e.type === 'decode' && !e.readable))) return null // headlines: only what changes the story
+  if (!allFeed && (!HEADLINE.has(e.type) || (e.type === 'decode' && !e.readable) || ((e.type === 'caught' || e.type === 'killed') && letters.get(e.letter)?.kind === 'report'))) return null // headlines: only what changes the story
   const L = letters.get(e.letter)
   switch (e.type) {
     case 'thought': return `<div class="item" style="--c:${COLOR[e.house]}">${W(e)} <b>${e.house}</b> thinks: ${e.text.replace(/\b0 watches ago/g, 'just now').replace(/\b1 watches\b/g, '1 watch')}</div>`
@@ -488,7 +488,9 @@ function dispatchCard(lid: string, captor: string) {
 const strip = document.createElement('div'); strip.id = 'fords'; $('stage').append(strip)
 let stripKey = ''
 function fordStrip(pos: { x: number; y: number; flags: number }[]) {
+  const over = end && events.some(e => e.type === 'end' && e.t <= t)
   const held = init.map.fords.map((f: string) => {
+    if (over) { const h = end.fords[f]; return { name: nodes.get(f).name.replace(' FORD', '').toLowerCase(), h, fight: false } }
     const n = nodes.get(f), hs = [...new Set(pos.flatMap((p, i) => !(p.flags & 3) && Math.hypot(p.x - n.x, p.y - n.y) < 50 ? [squadInfo[i].house] : []))]
     return { name: n.name.replace(' FORD', '').toLowerCase(), h: hs.length === 1 ? hs[0] : null, fight: hs.length > 1 }
   })
@@ -522,7 +524,8 @@ function ending() {
     <p>${why}</p>
     <div class="ec-fords">${held.map(([f, h]) => `<span style="--c:${h ? COLOR[h] : '#8a7d66'}"><i></i>${fordName(f)}: <b>${h ? cap(h) : 'nobody'}</b></span>`).join('')}</div>
     <table><tr><th></th><th>Score</th><th>Riders lost</th><th>Letters taken</th><th>Ciphers broken</th></tr>
-    ${rows.map(h => `<tr><td><b style="color:${COLOR[h]}">${cap(h)}</b></td><td>${end.scores[h]}</td><td>${per(h, 'caught', 'house') + per(h, 'killed', 'house')}</td><td>${per(h, 'caught', 'by')}</td><td>${events.filter(e => e.type === 'decode' && e.readable && e.house === h).length}</td></tr>`).join('')}</table>
+    ${rows.map(h => `<tr><td><b style="color:${COLOR[h]}">${cap(h)}</b></td><td>${end.scores[h]}</td><td>${per(h, 'caught', 'house') + per(h, 'killed', 'house')}</td><td>${per(h, 'caught', 'by')}</td><td>${new Set(events.filter(e => e.type === 'decode' && e.readable && e.house === h).map(e => e.letter)).size}</td></tr>`).join('')}</table>
+    <p>${(() => { const w = fin.winner, lost = per(w, 'caught', 'house') + per(w, 'killed', 'house'), took = per(w, 'caught', 'by'), most = HOUSES.reduce((a, b) => (per(b, 'caught', 'by') > per(a, 'caught', 'by') ? b : a)); return `${cap(w)} kept ${end.scores[w] - Object.values(end.fords as Record<string, string | null>).filter(x => x === w).length * 100} soldiers' worth of strength alive${took ? ` and took ${took} enemy letters` : ''}, losing ${lost} riders of its own.${most !== w ? ` ${cap(most)} read the most enemy mail but could not turn it into ground.` : ''}` })()}</p>
     <p class="ec-hint">Open the Mailbag to read every letter, or scrub back to any moment.</p></div>`
   endCard.hidden = false
 }

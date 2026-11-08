@@ -24,7 +24,7 @@ export function ladder(COLOR: Record<string, string>, names: Record<string, stri
   const form = d.querySelector<HTMLFormElement>('#ld-form')!, msg = d.querySelector('#ld-msg')!, ta = form.elements.namedItem('text') as HTMLTextAreaElement
   const count = () => { d.querySelector('#ld-count')!.textContent = `${ta.value.length} / ${MAX}` }
   ta.oninput = count
-  if (!API) { form.querySelector<HTMLButtonElement>('button[type=submit]')!.disabled = true; msg.textContent = 'Entries open when the ladder server goes live.' }
+  if (!API) { form.hidden = true; d.querySelector('.lede')!.insertAdjacentHTML('beforeend', ' <b>Entries open at launch</b>; below, the results of the first rehearsal night.') }
   form.onsubmit = async e => {
     e.preventDefault()
     const f = new FormData(form), btn = form.querySelector<HTMLButtonElement>('button[type=submit]')!
