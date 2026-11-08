@@ -393,6 +393,7 @@ function feed() {
     if (key === prev) { rep++; out[out.length - 1] = first.replace(/<\/div>$/, ` <small>×${rep}</small></div>`); continue }
     prev = key; first = l; rep = 1; out.push(l)
   }
+  if (!out.length && !allFeed) out.push('<p class="feed-empty">No big moments yet. Interceptions, broken ciphers, truces and smoke signals will appear here. <b>All dispatches</b> shows every order and every general’s thinking.</p>')
   if (tab === 'feed') $('feed').innerHTML = out.join('')
   else mailbag()
   predict()

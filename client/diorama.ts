@@ -488,8 +488,8 @@ export async function createDiorama(host: HTMLElement, init: any) {
         if (f.type === 'clash') { let n = 0, sx = 0, sy = 0; s.squads.forEach((q, k) => { if (!(q.flags & 2) && drawn[k] && Math.hypot(q.x - f.x, q.y - f.y) < 60) { sx += drawn[k].x; sy += drawn[k].y; n++ } }); if (n) { fx = sx / n; fy = sy / n } } // a clash rings the middle of everyone in it
         r.position.copy(W(fx, fy, 2)); r.scale.setScalar(16 + f.age * 50)
         const m = r.material as THREE.MeshBasicNodeMaterial
-        m.color.set(f.type === 'clash' ? '#efe3c4' : f.type === 'lost' ? '#ffffff' : '#e8321e'); m.opacity = 0.95 * (1 - f.age * 0.7)
-        ;((r.children[0] as THREE.Mesh).material as THREE.MeshBasicNodeMaterial).opacity = (f.type === 'clash' ? 0.35 : 0.7) * (1 - f.age * 0.7)
+        m.color.set(f.type === 'clash' ? '#efe3c4' : f.type === 'lost' ? '#ffffff' : '#e8321e'); m.opacity = (f.type === 'clash' && army ? 0.4 : 0.95) * (1 - f.age * 0.7) // with 3D fighting visible, contact rings only whisper
+        ;((r.children[0] as THREE.Mesh).material as THREE.MeshBasicNodeMaterial).opacity = (f.type === 'clash' ? 0.15 : 0.7) * (1 - f.age * 0.7)
       })
       // labels: hide any that would be cut by the view edge or the panel, or that sit on a unit
       const cw = renderer.domElement.clientWidth, ch = renderer.domElement.clientHeight

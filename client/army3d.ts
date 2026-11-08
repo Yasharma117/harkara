@@ -113,6 +113,12 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
     b.from.copy(from); b.to.copy(to); b.t0 = clock; b.dur = 0.55 + Math.random() * 0.25; b.o.visible = true
   }
 
+  // dust kicked up where men fight: painted puffs that rise and fade
+  const dustTex = await new THREE.TextureLoader().loadAsync('art/dust-puff.webp').catch(() => null)
+  if (dustTex) dustTex.colorSpace = THREE.SRGBColorSpace
+  const puffs = Array.from({ length: 70 }, () => { const sp = new THREE.Sprite(new THREE.SpriteNodeMaterial({ map: dustTex, transparent: true, depthWrite: false, opacity: 0 })); sp.visible = false; scene.add(sp); return { sp, t0: 0, x: 0, y: 0, s: 0 } })
+  let puffN = 0
+  const puff = (x: number, y: number) => { const p = puffs[puffN++ % puffs.length]; Object.assign(p, { t0: clock, x, y, s: 26 + Math.random() * 22 }); p.sp.visible = !!dustTex }
   // soft blob shadows under every figure
   const blobTex = new THREE.CanvasTexture((() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d')!; const r = g.createRadialGradient(32, 32, 0, 32, 32, 32); r.addColorStop(0, 'rgba(20,18,12,.5)'); r.addColorStop(1, 'rgba(20,18,12,0)'); g.fillStyle = r; g.fillRect(0, 0, 64, 64); return c })())
   const total = [...units.values()].reduce((a, u) => a + u.figs.length, 0)
@@ -176,6 +182,7 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
           if (f.root.visible) { const r = u.kind === 'cav' ? 26 : 13; P.copy(W(f.x, f.y, 0.7)); S.set(r * (f.dead ? 1.5 : 1), r * 0.8, 1); M.compose(P, Q, S); blobs.setMatrixAt(bn++, M) }
         })
         u.seen = true
+        if (mode === 'fight' && Math.random() < adt * 5) { const f = u.figs[Math.floor(Math.random() * alive)]; if (f && !f.dead) puff(f.x + (Math.random() - 0.5) * 20, f.y + (Math.random() - 0.5) * 14) }
         // archers loose bolts at the enemy they face
         if (mode === 'shoot' && foe && clock - u.shotAt > 0.22) {
           u.shotAt = clock
@@ -184,6 +191,12 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
         }
       }
       blobs.count = bn; blobs.instanceMatrix.needsUpdate = true
+      for (const p of puffs) {
+        if (!p.sp.visible) continue
+        const k = (clock - p.t0) / 1.6
+        if (k >= 1) { p.sp.visible = false; continue }
+        p.sp.position.copy(W(p.x, p.y, 6 + k * 22)); p.sp.scale.setScalar(p.s * (0.6 + k * 0.9)); (p.sp.material as THREE.SpriteNodeMaterial).opacity = 0.55 * Math.sin(Math.PI * k)
+      }
       for (const b of bolts) {
         if (!b.o.visible) continue
         const k = (clock - b.t0) / b.dur
