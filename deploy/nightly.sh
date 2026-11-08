@@ -8,7 +8,7 @@ git fetch -q origin main && git checkout -q main && git merge -q --ff-only origi
 ID=""
 for d in client/public/replay/daily-*/; do [ -f "$d/answers.json" ] && [ ! -f "$d/end.json" ] && ID=$(basename "$d") && break; done 2>/dev/null || true
 ID=${ID:-daily-$(TZ=Asia/Kolkata date +%F)}
-node --env-file=.env engine/run.ts --models --id "$ID" --seed "$(printf %s "$ID" | cksum | cut -d' ' -f1)"
+node --env-file=.env engine/run.ts --models --rotate "$(( $(date -u +%s) / 86400 ))" --id "$ID" --seed "$(printf %s "$ID" | cksum | cut -d' ' -f1)"
 # then tonight's Doctrine Ladder on the local model (exit 2 = model server down; entries stay queued for the next run)
 node --env-file=.env engine/ladder.ts || [ $? -eq 2 ]
 # voice every finished battle that has no audio yet (Kokoro-82M on the CPU; a voice failure never blocks the battle)

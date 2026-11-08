@@ -1,4 +1,6 @@
 // node engine/run.ts [--seed 1] [--models] [--local] [--doctrines file.json] [--id name] [--out dir] [--watches 30]
+// --rotate N: shift which model chain commands which house by N (the nightly uses the day number), so over four
+//   nights every model plays every corner of the map; the map's west side is ~15% stronger.
 // --local: every house on the one local model (ladder battles), so only the doctrine differs.
 // --doctrines: {"rhino": "..."} — each house's doctrine reaches only its own general.
 // With --models, every answer is recorded to answers.json in the battle folder. If a provider goes down
@@ -12,7 +14,7 @@ import { runBattle, type Decision, type General } from './sim.ts'
 import { scripted } from './scripted.ts'
 import { modelGeneral, loadConfig, ProviderDown } from './model.ts'
 
-const { values: a } = parseArgs({ options: { seed: { type: 'string', default: '1' }, models: { type: 'boolean' }, local: { type: 'boolean' }, doctrines: { type: 'string' }, id: { type: 'string' }, out: { type: 'string' }, watches: { type: 'string', default: '30' } } })
+const { values: a } = parseArgs({ options: { seed: { type: 'string', default: '1' }, models: { type: 'boolean' }, local: { type: 'boolean' }, rotate: { type: 'string', default: '0' }, doctrines: { type: 'string' }, id: { type: 'string' }, out: { type: 'string' }, watches: { type: 'string', default: '30' } } })
 const seed = Number(a.seed)
 const id = a.id ?? `${a.models ? 'model' : 'grey'}-${seed}`
 const root = a.out ?? join(import.meta.dirname, '../client/public/replay')
@@ -33,6 +35,7 @@ const recorded = (h: HouseId, g: General): General => ({
   },
 })
 const cfg = loadConfig()
+{ const r = ((Number(a.rotate) % 4) + 4) % 4, chains = HOUSES.map(h => cfg.houses[h]); HOUSES.forEach((h, i) => (cfg.houses[h] = chains[(i + r) % 4])) }
 if (a.local) for (const h of HOUSES) cfg.houses[h] = [{ provider: 'local', model: 'local' }]
 const live = a.models || a.local
 const generals = Object.fromEntries(HOUSES.map(h => [h, live ? recorded(h, modelGeneral(h, cfg)) : scripted(h)])) as Record<HouseId, General>
