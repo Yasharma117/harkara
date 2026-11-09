@@ -2,7 +2,7 @@
 // Foot march, fight and fall; archers loose crossbow bolts that fly; horsemen gallop. Elephants stay painted cut-outs
 // (diorama.ts) until a 3D elephant arrives. Models: client/public/models (licences in LICENSES.txt).
 import * as THREE from 'three/webgpu'
-import { texture, uv, vec3, mix, smoothstep, max, min } from 'three/tsl'
+import { texture, uv, vec3, mix, smoothstep, max, min, vertexColor } from 'three/tsl'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js'
 
@@ -29,12 +29,12 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
     const b = Uint8Array.from(atob((await pack)[f]), c => c.charCodeAt(0))
     return loader.parseAsync(b.buffer, 'models/')
   }
-  const [knight, rogue, horse, bow, bolt] = await Promise.all(['Knight.glb', 'Rogue_Hooded.glb', 'Horse.glb', 'crossbow_2handed.glb', 'arrow.glb'].map(load))
+  const [knight, rogue, horse, bow, bolt, foot] = await Promise.all(['Knight.glb', 'Rogue_Hooded.glb', 'Horse.glb', 'crossbow_2handed.glb', 'arrow.glb', 'Infantry.glb'].map(load))
 
   // house colour goes on the neutral, light parts of the paint (armour, cloth); skin, wood and leather keep their colours
   const mats = new Map<string, THREE.Material>()
-  const houseMat = (m: THREE.MeshStandardMaterial, house: string) => {
-    const key = `${m.uuid}|${house}`
+  const houseMat = (m: THREE.MeshStandardMaterial, house: string, vc = false) => {
+    const key = `${m.uuid}|${house}|${vc}`
     if (mats.has(key)) return mats.get(key)!
     const nm = new THREE.MeshStandardNodeMaterial({ roughness: 0.75, metalness: 0.05 })
     if (m.map) {
@@ -43,6 +43,12 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
       const cloth = max(smoothstep(0.25, 0.45, c.r.sub(max(c.g, c.b))), smoothstep(0.06, 0.16, c.g.sub(max(c.r, c.b)))) // the models' red tunics and green hoods are team colour: make them the house's
       const hc = vec3(HOUSE[house].r, HOUSE[house].g, HOUSE[house].b)
       nm.colorNode = mix(mix(c, hc.mul(hi.mul(1.25).add(0.18)), neutral.mul(0.85)), hc.mul(hi.mul(1.2).add(0.05)), cloth)
+    } else if (vc) {
+      // generated models (batch 5) carry vertex colours: the off-white quilted cloth takes the house colour; skin, steel and leather stay
+      const c = vertexColor().rgb, hi = max(c.r, max(c.g, c.b)), sat = hi.sub(min(c.r, min(c.g, c.b)))
+      const cloth = smoothstep(0.07, 0.15, sat).oneMinus().mul(smoothstep(0.14, 0.32, hi)) // measured in linear: quilting sits at 0.2–0.5
+      const hc = vec3(HOUSE[house].r, HOUSE[house].g, HOUSE[house].b)
+      nm.colorNode = mix(c, hc.mul(hi.mul(1.6).add(0.06)), cloth.mul(0.9))
     } else nm.color.copy(m.color)
     mats.set(key, nm)
     return nm
@@ -53,14 +59,14 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
     const b = new THREE.Box3().setFromObject(g), k = h / (b.max.y - b.min.y || 1)
     return { k, foot: -b.min.y * k }
   }
-  const footFit = fit(knight.scene, HEIGHT.foot), rogueFit = fit(rogue.scene, HEIGHT.foot), horseFit = fit(horse.scene, HEIGHT.horse), riderFit = fit(knight.scene, HEIGHT.rider)
+  const footFit = fit(foot.scene, HEIGHT.foot), rogueFit = fit(rogue.scene, HEIGHT.foot), horseFit = fit(horse.scene, HEIGHT.horse), riderFit = fit(knight.scene, HEIGHT.rider)
 
   const make = (src: typeof knight, f: { k: number; foot: number }, house: string, prefix = ''): Fig => {
     const root = SkeletonUtils.clone(src.scene)
     root.scale.setScalar(f.k)
     root.traverse(o => {
       const m = o as THREE.Mesh
-      if (m.isMesh) { m.frustumCulled = false; m.material = houseMat(m.material as THREE.MeshStandardMaterial, house) }
+      if (m.isMesh) { m.frustumCulled = false; m.material = houseMat(m.material as THREE.MeshStandardMaterial, house, !!m.geometry.attributes.color) }
     })
     const holder = new THREE.Group(); holder.add(root); root.position.y = f.foot
     const mixer = new THREE.AnimationMixer(root), acts = new Map<string, THREE.AnimationAction>()
@@ -84,7 +90,7 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
         play(r, 'Sit_Chair_Idle')
         figs.push(h)
       } else {
-        const f = kind === 'arch' ? make(rogue, rogueFit, s.house) : make(knight, footFit, s.house)
+        const f = kind === 'arch' ? make(rogue, rogueFit, s.house) : make(foot, footFit, s.house)
         if (kind === 'arch') { strip(f, /^$/); const b = bow.scene.clone(); hand(f, 'r')?.add(b) }
         figs.push(f)
       }
