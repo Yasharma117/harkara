@@ -51,7 +51,7 @@ await ev(`(document.querySelector('#title .tt-go') ?? document.getElementById('p
 const t0 = Date.now(); let endedAt = 0, ladder = false
 while (Date.now() - t0 < Number(rest[0] ?? 300) * 1000) {
   await new Promise(r => setTimeout(r, 1000))
-  const over = await ev(`!!document.querySelector('#feed .item')?.textContent.startsWith('Battle over')`)
+  const over = await ev(`document.getElementById('endcard')?.hidden === false`)
   if (over && !endedAt) { endedAt = Date.now(); console.log('ended at', (endedAt - t0) / 1000, 's') }
   if (endedAt && !ladder && Date.now() - endedAt > 5000) { ladder = true; await ev(`document.getElementById('ladder-open').click()`) }
   if (endedAt && Date.now() - endedAt > 12000) break
