@@ -25,7 +25,7 @@ Drop the PNGs in `harkara/assets/raw/` (or attach them in chat). I run `npm run 
 ## 4. Launch (cycle 5)
 1. **Oracle ports.** In the Oracle console: Networking → your VCN → Security Lists → Default → Add Ingress Rules: source `0.0.0.0/0`, TCP, destination ports `80,443`. (The box's own firewall is opened by cloud-init.)
 2. Run `harkara-setup` on the box. At the end it prints the ladder API address, e.g. `https://129-154-1-2.sslip.io`. Free HTTPS, no domain needed.
-3. **Cloudflare Pages.** dash.cloudflare.com → Workers & Pages → Create → Pages → Connect to Git → pick `Yasharma117/harkara`. Framework preset: None. Build command: `npm ci --ignore-scripts && npm run build` (skips the voice tool's native downloads, which the site doesn't need). Build output directory: `client/dist`. Under Environment variables add `NODE_VERSION` = `24` and `VITE_LADDER_API` = the address from step 2. Save and deploy. Caching comes from `client/public/_headers`.
+3. **Cloudflare Pages.** dash.cloudflare.com → Workers & Pages → Create → Pages → Connect to Git → pick `Yasharma117/harkara`. Framework preset: None. Build command: `npm ci --ignore-scripts && npm run build`. Build output directory: `client/dist`. Under Environment variables add `NODE_VERSION` = `24` and `VITE_LADDER_API` = the address from step 2. Save and deploy. Caching comes from `client/public/_headers`.
 4. Send me the `*.pages.dev` URL. I set it as the API's allowed origin and run the first ladder night.
 
 ## What runs every night on the box (02:00 IST)
