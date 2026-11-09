@@ -116,6 +116,8 @@ export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<stri
   if (last) cand.push({ t: last.t, seq: last.seq, r: 8, hold: 0, c: '#d9b45a', html: '<b>Three watches left.</b> A house that holds two fords alone at the end wins outright. Otherwise it goes to points: 100 for each ford held alone, plus every soldier still standing.' })
   const fin = events.find(e => e.type === 'watch' && e.watch === 30)
   if (fin) cand.push({ t: fin.t, seq: fin.seq, r: 8, hold: 0, c: '#d9b45a', html: '<b>The last watch.</b> Whoever stands alone at a ford when it ends holds it. Armies still fighting there hold nothing.' })
+  const endEv = events.find(e => e.type === 'end')
+  if (endEv && /score/i.test(endEv.reason)) cand.push({ t: endEv.t - 30, seq: endEv.seq - 0.5, r: 8.5, hold: 0, c: '#d9b45a', html: '<b>No ford is held alone.</b> Every crossing ends contested or empty, so no one gets the 100 points a ford is worth. It comes down to soldiers still standing.' })
   // the most important moments win: walk by rank, keep a line only if the narrator is free for its whole hold
   const busy: [number, number][] = []
   for (const l of [...cand].sort((a, b) => b.r - a.r || a.t - b.t)) {

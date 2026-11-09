@@ -21,6 +21,7 @@ const squadInfo: any[] = init.squads
 const watches: WatchFile[] = [], events: Ev[] = [], frames: WatchFile['frames'] = []
 const couriers = new Map<string, Ev>(), letters = new Map<string, Ev>(), byLetter = new Map<string, Ev[]>() // fates + decodes per letter
 const marks: number[] = []
+const firstRead = new Map<string, number>() // house:letter → seq of the first readable decode
 let end: any = null
 
 // ---- controls
@@ -122,6 +123,7 @@ $('houses').innerHTML = init.houses.map((h: any) => `<div class="house" data-h="
     const wf: WatchFile = await get(`watch${w}.json`)
     watches.push(wf); events.push(...wf.events); frames.push(...wf.frames)
     for (const e of wf.events) if (e.letter && e.type !== 'courier' && e.type !== 'intel') (byLetter.get(e.letter) ?? byLetter.set(e.letter, []).get(e.letter)!).push(e)
+    for (const e of wf.events) if (e.type === 'decode' && e.readable && !firstRead.has(`${e.house}:${e.letter}`)) firstRead.set(`${e.house}:${e.letter}`, e.seq)
     for (const e of wf.events) if (e.type === 'courier') { couriers.set(e.id, e); if (letters.has(e.letter)) letters.get(e.letter)!.double = true; else letters.set(e.letter, e) }
     addMarks(wf.events)
   }
@@ -358,6 +360,7 @@ const name = (sid: string) => { const s = squadInfo.find(x => x.id === sid); ret
 const W = (e: Ev) => `<small>w${Math.floor(e.t / TPW) + 1}</small>`
 const HEADLINE = new Set(['caught', 'killed', 'decode', 'truce', 'smoke', 'standard', 'destroyed', 'end'])
 function line(e: Ev): string | null {
+  if (!allFeed && e.type === 'decode' && e.readable && firstRead.get(`${e.house}:${e.letter}`) !== e.seq) return null // a letter is news once: when it first becomes readable
   if (!allFeed && (!HEADLINE.has(e.type) || (e.type === 'decode' && !e.readable) || ((e.type === 'caught' || e.type === 'killed') && letters.get(e.letter)?.kind === 'report'))) return null // headlines: only what changes the story
   const L = letters.get(e.letter)
   switch (e.type) {
@@ -384,6 +387,7 @@ function feed() {
   shown = n
   const out: string[] = []
   let prev = '', first = '', rep = 1
+  const groups = new Map<string, { n: number; at: number; e: Ev }>()
   for (let i = n - 1; i >= 0 && out.length < 80; i--) {
     const e = events[i]
     // one general's orders sent in the same watch read as one dispatch, not a wall of near-identical lines
@@ -398,12 +402,22 @@ function feed() {
         continue
       }
     }
+    if (!allFeed && (e.type === 'caught' || e.type === 'killed') && line(e)) {
+      // one captor taking one house's riders again and again reads as one headline per three watches
+      const by = String(e.by).split('-')[0], key = `${by}:${e.house}:${Math.floor(e.t / TPW / 3)}`
+      const g = groups.get(key)
+      if (g) { g.n++; continue }
+      groups.set(key, { n: 1, at: out.length, e })
+      out.push('')
+      continue
+    }
     const l = line(e)
     if (!l) continue
     const key = l.replace(/<small>w\d+<\/small>/, '') // the same line in another watch still counts as a repeat
     if (key === prev) { rep++; out[out.length - 1] = first.replace(/<\/div>$/, ` <small>×${rep}</small></div>`); continue }
     prev = key; first = l; rep = 1; out.push(l)
   }
+  for (const g of groups.values()) out[g.at] = g.n > 1 ? `<div class="item big" style="--c:#c0392b">${W(g.e)} <b>${cap(String(g.e.by).split('-')[0])}</b> caught <b>${g.n} ${cap(g.e.house)}</b> riders. ${cap(g.e.house)}'s orders are not getting through.</div>` : line(g.e)!
   if (!out.length && !allFeed) out.push('<p class="feed-empty">No big moments yet. Interceptions, broken ciphers, truces and smoke signals will appear here. <b>All dispatches</b> shows every order and every general’s thinking.</p>')
   if (tab === 'feed') $('feed').innerHTML = out.join('')
   else mailbag()
@@ -515,6 +529,7 @@ function fordStrip(pos: { x: number; y: number; flags: number; str: number }[]) 
   const fkey = JSON.stringify(held) + two
   if (fkey !== pendKey) { pendKey = fkey; pendAt = performance.now() }
   if (!over && fkey !== shownF && performance.now() - pendAt < 900) return // a ford changing hands must hold a moment before it shows: no flicker
+  if (shownF && fkey !== shownF && !over) { const prev = JSON.parse(shownF.slice(0, shownF.lastIndexOf(']') + 1) || '[]'); const ch = held.findIndex((f: any, i: number) => prev[i] && prev[i].h !== f.h); if (ch >= 0) { const n = nodes.get(init.map.fords[ch]); shot = { x: n.x, y: n.y, from: t, until: t + 600, r: 460 } } }
   shownF = fkey; stripKey = key
   strip.innerHTML = `<span class="fd-t">Fords</span>${held.map((f: any) => `<span class="fd" style="--c:${f.h ? COLOR[f.h] : '#8a7d66'}"><i></i>${f.name} <b>${f.h ? f.h : f.fight ? 'contested' : 'empty'}</b></span>`).join('')}${two ? `<span class="fd-win" style="--c:${COLOR[two]}">${two} holds two</span>` : ''}<span class="fd-t fd-sc" title="100 for each ford held alone, plus every soldier still standing">Score <i class="fd-how">100/ford + men</i></span>${rank.map((h, i) => `<span class="sc${i ? '' : ' lead'}" style="--c:${COLOR[h]}">${cap(h)} <b>${score[h]}</b></span>`).join('')}`
 }
