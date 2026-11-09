@@ -135,7 +135,7 @@ export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<stri
       lastT = t
       let i = lines.findLastIndex(l => l.t <= t)
       if (i > shown && t - lines[i].t < 400) {
-        shown = i; until = performance.now() + 4800 // held in real seconds, whatever the playback speed
+        shown = i; until = performance.now() + 4200 // held in real seconds, whatever the playback speed
         box.innerHTML = `<div class="nr-line" style="--c:${lines[i].c}">${lines[i].html}</div>`
         if (lines[i].letter) openLetter(lines[i].letter!)
         box.classList.add('on')

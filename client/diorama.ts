@@ -346,7 +346,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
     } else if (follow) label = follow.seen ? 'The ride is over' : 'Waiting for the rider to leave camp'
     else if (!idle) return label
     else if (s.shot) {
-      want.t.copy(W(s.shot.x, s.shot.y)); want.r = s.shot.r ?? 720; want.polar = want.r < 500 ? 0.95 : 0.86 // close shots drop lower, nearer eye level
+      want.t.copy(W(s.shot.x, s.shot.y)); want.r = s.shot.r ?? 470; want.polar = want.r < 500 ? 0.95 : 0.86 // close shots drop lower, nearer eye level
       want.az = Math.sin(now / 11000) * 0.28 // a slow drift around the action while it holds, like a crane on a set
       const far = controls.target.distanceTo(want.t)
       if (far > 250) want.r += Math.min(650, far * 0.7) // far to go: rise up and over rather than slide along the ground

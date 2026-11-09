@@ -305,7 +305,7 @@ function draw() {
 const SCORE: Record<string, number> = { standard: 10, killed: 8, caught: 8, clash: 3 } // decodes and truces happen in camp; their letter cards tell them, the camera stays on the field
 let shot: { x: number; y: number; from: number; until: number; r?: number } | null = null
 // how close the camera pushes in for each kind of moment: a capture or a broken cipher is personal, a clash is wide
-const LENS: Record<string, number> = { standard: 460, caught: 520, killed: 540, decode: 500, truce: 600, clash: 680 }
+const LENS: Record<string, number> = { standard: 380, caught: 420, killed: 430, decode: 420, truce: 480, clash: 440 } // close: the soldiers' animation is the show
 // a shot needs context: two houses in frame, or one house at a named landmark (ford, ferry, camp, village)
 const LANDMARK = [...nodes.values()].filter((n: any) => /^F\d|ferry|-camp|village/.test(n.id))
 function context(at: { x: number; y: number }, pos: { x: number; y: number; flags: number }[]) {
@@ -314,8 +314,8 @@ function context(at: { x: number; y: number }, pos: { x: number; y: number; flag
 }
 function director(tt: number, pos: { x: number; y: number; flags: number }[]) {
   // hold every shot at least ~5 s of play, so the camera settles; only a bigger moment may cut in early
-  if (shot && tt >= shot.from && tt < Math.max(shot.until, shot.from + 420)) {
-    const urgent = events.find(e => e.t > tt && e.t < tt + 120 && (SCORE[e.type] ?? 0) >= 8 && e.x != null && Math.hypot(e.x - shot!.x, e.y - shot!.y) > 200)
+  if (shot && tt >= shot.from && tt < Math.max(shot.until, shot.from + 720)) { // ~9 s at 8×: long enough to follow one army
+    const urgent = events.find(e => e.t > tt && e.t < tt + 120 && e.type === 'standard')
     if (!urgent) return shot
   }
   let best: { x: number; y: number; s: number; t: number; type: string } | null = null
@@ -509,7 +509,7 @@ function fordStrip(pos: { x: number; y: number; flags: number; str: number }[]) 
   if (fkey !== pendKey) { pendKey = fkey; pendAt = performance.now() }
   if (!over && fkey !== shownF && performance.now() - pendAt < 900) return // a ford changing hands must hold a moment before it shows: no flicker
   shownF = fkey; stripKey = key
-  strip.innerHTML = `<span class="fd-t">Fords</span>${held.map((f: any) => `<span class="fd" style="--c:${f.h ? COLOR[f.h] : '#8a7d66'}"><i></i>${f.name} <b>${f.h ? f.h : f.fight ? 'contested' : 'empty'}</b></span>`).join('')}${two ? `<span class="fd-win" style="--c:${COLOR[two]}">${two} holds two</span>` : ''}<span class="fd-t fd-sc">Score</span>${rank.map((h, i) => `<span class="sc${i ? '' : ' lead'}" style="--c:${COLOR[h]}">${cap(h)} <b>${score[h]}</b></span>`).join('')}`
+  strip.innerHTML = `<span class="fd-t">Fords</span>${held.map((f: any) => `<span class="fd" style="--c:${f.h ? COLOR[f.h] : '#8a7d66'}"><i></i>${f.name} <b>${f.h ? f.h : f.fight ? 'contested' : 'empty'}</b></span>`).join('')}${two ? `<span class="fd-win" style="--c:${COLOR[two]}">${two} holds two</span>` : ''}<span class="fd-t fd-sc" title="100 for each ford held alone, plus every soldier still standing">Score <i class="fd-how">100/ford + men</i></span>${rank.map((h, i) => `<span class="sc${i ? '' : ' lead'}" style="--c:${COLOR[h]}">${cap(h)} <b>${score[h]}</b></span>`).join('')}`
 }
 
 // ---- the ending: who won, why, and what each general's mail cost it
