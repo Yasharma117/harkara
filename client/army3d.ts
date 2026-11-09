@@ -29,7 +29,7 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
     const b = Uint8Array.from(atob((await pack)[f]), c => c.charCodeAt(0))
     return loader.parseAsync(b.buffer, 'models/')
   }
-  const [knight, rogue, horse, bow, bolt, foot] = await Promise.all(['Knight.glb', 'Rogue_Hooded.glb', 'Horse.glb', 'crossbow_2handed.glb', 'arrow.glb', 'Infantry.glb'].map(load))
+  const [knight, horse, bolt, foot, rogue] = await Promise.all(['Knight.glb', 'Horse.glb', 'arrow.glb', 'Infantry.glb', 'Archer.glb'].map(load))
 
   // house colour goes on the neutral, light parts of the paint (armour, cloth); skin, wood and leather keep their colours
   const mats = new Map<string, THREE.Material>()
@@ -74,9 +74,6 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
     scene.add(holder)
     return { root: holder, mixer, acts, cur: '', dead: false, x: 0, y: 0, yaw: 0, diedAt: 0, hitUntil: 0 }
   }
-  // hide the weapons a model carries that don't fit its role, keep one: knights keep sword and shield, archers get a crossbow
-  const strip = (fig: Fig, keep: RegExp) => fig.root.traverse(o => { if ((o as THREE.Mesh).isMesh && o.parent?.name.startsWith('handslot') && !keep.test(o.name)) o.visible = false })
-  const hand = (fig: Fig, side: 'r' | 'l') => { let b: THREE.Object3D | undefined; fig.root.traverse(o => { if (o.name === `handslot.${side}`) b = o }); return b }
 
   const units = new Map<string, Unit>()
   for (const s of squads) {
@@ -91,7 +88,7 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
         figs.push(h)
       } else {
         const f = kind === 'arch' ? make(rogue, rogueFit, s.house) : make(foot, footFit, s.house)
-        if (kind === 'arch') { strip(f, /^$/); const b = bow.scene.clone(); hand(f, 'r')?.add(b) }
+        // the generated archer carries his own bow; no crossbow to attach
         figs.push(f)
       }
     }
