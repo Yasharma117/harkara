@@ -162,7 +162,7 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
             if (!u.seen) f.root.visible = false
             // the fallen lie a few seconds, then sink into the grass, so fords don't fill with bodies
             const age = clock - f.diedAt
-            if (f.dead && age > 5) { f.root.visible = age < 7.5; f.root.position.y = W(f.x, f.y, 0).y - (age - 5) * 6 }
+            if (f.dead && age > 12) { f.root.visible = age < 14.5; f.root.position.y = W(f.x, f.y, 0).y - (age - 12) * 6 }
           } else {
             if (f.dead) { f.dead = false; f.cur = '' } // rallied
             f.root.visible = true
@@ -177,7 +177,7 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
             else play(f, mode === 'run' || (charging && u.kind === 'inf') ? 'Running_A' : mode === 'walk' ? 'Walking_A' : mode === 'fight' ? (clock < f.hitUntil ? (i % 2 ? 'Hit_A' : 'Block_Hit') : MELEE[i % MELEE.length]) : mode === 'shoot' ? '2H_Ranged_Shooting' : u.kind === 'arch' ? '2H_Ranged_Aiming' : 'Idle')
             f.mixer.timeScale = ts
           }
-          if (!(f.dead && clock - f.diedAt > 5)) f.root.position.copy(W(f.x, f.y, 0))
+          if (!(f.dead && clock - f.diedAt > 12)) f.root.position.copy(W(f.x, f.y, 0))
           f.root.rotation.y = f.yaw
           f.mixer.update(adt); f.rider?.mixer.update(adt)
           if (f.root.visible) { const r = u.kind === 'cav' ? 26 : 13; P.copy(W(f.x, f.y, 0.7)); S.set(r * (f.dead ? 1.5 : 1), r * 0.8, 1); M.compose(P, Q, S); blobs.setMatrixAt(bn++, M) }

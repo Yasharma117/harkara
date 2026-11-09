@@ -212,6 +212,11 @@ export async function createDiorama(host: HTMLElement, init: any) {
     g.strokeStyle = 'rgba(42,32,22,.45)'; g.lineWidth = 2; g.beginPath(); g.arc(64, 64, 45, 0, 7); g.stroke() // inner rule, like a painted shield
   }), init.squads.length, { tinted: false })
   roundel.mesh.renderOrder = 1; (roundel.mesh.material as THREE.Material).depthWrite = false
+  // a strength bar under each standard: a fight visibly drains one side
+  const barMat = (c: string) => new THREE.MeshBasicNodeMaterial({ color: c, transparent: true, depthTest: false, depthWrite: false, fog: false })
+  const barBg = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), barMat('#1a130b'), init.squads.length), barFg = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicNodeMaterial({ transparent: true, depthTest: false, depthWrite: false, fog: false }), init.squads.length)
+  for (const b of [barBg, barFg]) { b.frustumCulled = false; scene.add(b) }
+  barBg.renderOrder = 7; barFg.renderOrder = 8
   // soft contact shadows, flat on the ground, one per soldier
   const shTex = new THREE.CanvasTexture(placeholder(g => { const r = g.createRadialGradient(64, 64, 0, 64, 64, 64); r.addColorStop(0, 'rgba(20,24,16,.55)'); r.addColorStop(1, 'rgba(20,24,16,0)'); g.fillStyle = r; g.fillRect(0, 0, 128, 128) })())
   const shadows = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicNodeMaterial({ map: shTex, transparent: true, depthWrite: false }), init.squads.length * PER_SQUAD)
@@ -424,7 +429,9 @@ export async function createDiorama(host: HTMLElement, init: any) {
           // on the pole tip (the pole stands at 35% of the pennant art's width); a second house at the spot steps aside
           const D = q.type === 'ele' ? 30 : 26, px = fx - 0.15 * fh * (flag?.aspect ?? 0.667) * flip + touching * 46, lift = fh * 0.95
           const eh = Math.min(D * 0.5, (D * 0.74) / bb.aspect), ey = lift + (D - eh) / 2
-          place(roundel.mesh, rn++, px, fy + 0.5, D, D, yaw, 0, lift)
+          place(roundel.mesh, rn, px, fy + 0.5, D, D, yaw, 0, lift)
+          { const bw = D * 1.25, bh = 4.2; place(barBg, rn, px, fy + 0.6, bw + 2, bh + 2, yaw, 0, lift - 4); const k = Math.max(0, Math.min(1, q.str / 100)); P.copy(W(px, fy + 0.7, lift - 4)); Q.setFromAxisAngle(up, yaw); P.add(new THREE.Vector3(-(1 - k) * bw / 2, 0, 0).applyQuaternion(Q)); S.set(Math.max(0.01, bw * k), bh, 1); M.compose(P, Q, S); barFg.setMatrixAt(rn, M); barFg.setColorAt(rn, k > 0.5 ? c : k > 0.35 ? new THREE.Color('#d9a33a') : new THREE.Color('#c0392b')) }
+          rn++
           place(ob.mesh, bn[q.house], px, fy + 1, eh * 1.14 * bb.aspect * flip, eh * 1.14, yaw, 0, ey - eh * 0.07); ob.tint.setXYZ(bn[q.house], 0.1, 0.08, 0.06)
           place(bb.mesh, bn[q.house], px, fy + 1.5, eh * bb.aspect * flip, eh, yaw, 0, ey); bb.tint.setXYZ(bn[q.house]++, c.r * 0.92, c.g * 0.92, c.b * 0.92)
         }
@@ -433,6 +440,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
       army?.update(shown, s.t, dt)
       discs.count = dn; discs.instanceMatrix.needsUpdate = true; if (discs.instanceColor) discs.instanceColor.needsUpdate = true
       roundel.mesh.count = rn; roundel.mesh.instanceMatrix.needsUpdate = true
+      barBg.count = barFg.count = rn; barBg.instanceMatrix.needsUpdate = barFg.instanceMatrix.needsUpdate = true; if (barFg.instanceColor) barFg.instanceColor.needsUpdate = true
       for (const [hh, bb] of Object.entries(banners)) for (const m of [bb, outlines[hh]]) { m.mesh.count = bn[hh]; m.mesh.instanceMatrix.needsUpdate = true; m.tint.needsUpdate = true }
       if (flag) { flag.mesh.count = fl; flag.mesh.instanceMatrix.needsUpdate = true; flag.tint.needsUpdate = true }
       for (const [k, b] of Object.entries(units)) if (k !== 'harkara') { b.mesh.count = n[k]; b.mesh.instanceMatrix.needsUpdate = true; b.tint.needsUpdate = true }

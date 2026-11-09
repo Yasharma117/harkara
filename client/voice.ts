@@ -34,8 +34,8 @@ export async function voice(id: string, houses: House[], COLOR: Record<string, s
     for (const h of houses) {
       if (skipped) break
       ov.querySelectorAll('figure').forEach(f => f.classList.toggle('now', f.dataset.h === h.id))
-      const a = play(`p-${h.id}`)
-      const done = a ? new Promise<void>(r => { a.onended = () => r(); a.onerror = () => r(); a.onloadedmetadata = () => setTimeout(r, (a.duration || 6) * 1000 + 1000); setTimeout(r, 9000) }) : new Promise<void>(r => setTimeout(r, 2600))
+      // a brisk roll-call: each general's card for a moment (their words are on the card); the battle is the show
+      const done = new Promise<void>(r => setTimeout(r, 1500))
       await Promise.race([done, skipped$])
     }
     ov.classList.add('out')

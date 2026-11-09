@@ -8,14 +8,14 @@ const lower = (s: string) => s.toLowerCase().replace(/\b(west|middle|east) ford\
 const SQUAD: Record<string, string> = { 'inf-1': 'first foot', 'inf-2': 'second foot', 'arch-1': 'bowmen', 'cav-1': 'horsemen', 'ele-1': 'elephants' }
 const squadName = (id: string) => { const [h, ...r] = id.split('-'); return `${CAP(h)}'s ${SQUAD[r.join('-')] ?? r.join(' ')}` }
 
-export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<string, string>, stage: HTMLElement) {
+export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<string, string>, stage: HTMLElement, rehearsal = false) {
   // ---- the premise, once, before the opening scene
   const intro = document.createElement('div')
   intro.id = 'premise'
   intro.innerHTML = `<div class="pm-in">
     <small>Harkara · the messenger</small>
     <h2>Four AI generals. One river. Three fords.</h2>
-    <p>Each house is commanded by a different AI model. Hold two fords when the last watch ends and you win.</p>
+    <p>${rehearsal ? 'In the daily battles each house is commanded by a different AI model; this rehearsal uses simple code generals.' : 'Each house is commanded by a different AI model.'} Hold two fords when the last watch ends and you win.</p>
     <p><b>No general can see the battlefield.</b> Every order rides out on horseback, and every report rides back hours late. Riders can be <b>caught</b>, <b>shot</b> or <b>lost in the mist</b>, and a captured letter can be decoded, letter by letter, until the enemy is reading your plans.</p>
     <p class="pm-hint">Watch the gap between what each general believes and what is really happening.</p>
   </div>`
@@ -23,8 +23,8 @@ export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<stri
   stage.append(intro)
   const premise = () => new Promise<void>(r => {
     intro.hidden = false
-    const done = () => { intro.classList.add('out'); setTimeout(() => { intro.hidden = true; intro.classList.remove('out'); r() }, 450) }
-    const tm = setTimeout(done, 9000)
+    const done = () => { intro.classList.add('out'); r(); setTimeout(() => { intro.hidden = true; intro.classList.remove('out') }, 450) } // the next scene rises beneath the fade: no flash of the map
+    const tm = setTimeout(done, 7500)
     intro.onclick = () => { clearTimeout(tm); done() }
   })
 
@@ -120,7 +120,8 @@ export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<stri
     const order = [...dst].map((_, k) => 0.35 + ((k * 7919) % 97) / 97 * 1.6)
     const step = () => {
       const k = (performance.now() - t0) / 1000
-      body.textContent = [...dst].map((ch, j) => !l.reveal ? (src[j] ?? ch) : k > order[j] ? ch : /[A-Z]/.test(ch) ? (k > 0.2 ? String.fromCharCode(65 + ((j * 13 + Math.floor(k * 18)) % 26)) : src[j] ?? ch) : ch).join('')
+      const e = (c: string) => c.replace(/[&<>]/g, x => `&#${x.charCodeAt(0)};`) // model-written letters: never markup
+      body.innerHTML = [...dst].map((ch, j) => !l.reveal || k <= order[j] ? `<span class="ci">${e(src[j] ?? ch)}</span>` : k - order[j] < 0.25 ? `<b>${e(ch)}</b>` : e(ch)).join('') // the cipher itself turns into the words, letter by letter
       if (k < 2.2) scramble = requestAnimationFrame(step)
     }
     step()
