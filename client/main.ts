@@ -32,7 +32,7 @@ let busyIntro = false, autoBelief = false
 let vo: Awaited<ReturnType<typeof voice>> | null = null, opened = false, tale: ReturnType<typeof story> | null = null
 const setPlaying = (p: boolean) => {
   if (vo?.busy || busyIntro) return // the opening scene starts the battle when it ends
-  if (p && vo && !opened && t < 30) { opened = true; playBtn.textContent = 'Pause'; (async () => { while (!tale) await new Promise(r => setTimeout(r, 50)); busyIntro = true; await tale.premise(); busyIntro = false; await vo!.opening(); setPlaying(true) })(); return } // the opening scene runs once, before the first watch
+  if (p && vo && !opened && t < 30) { opened = true; playBtn.textContent = 'Pause'; (async () => { while (!tale) await new Promise(r => setTimeout(r, 50)); busyIntro = true; await tale.premise(); busyIntro = false; await vo!.opening(); document.body.classList.remove('intro'); setPlaying(true) })(); return } // the opening scene runs once, before the first watch
   playing = p; playBtn.textContent = p ? 'Pause' : 'Play'
 }
 setPlaying(playing)
@@ -87,6 +87,7 @@ const lad = ladder(COLOR, Object.fromEntries(init.houses.map((h: any) => [h.id, 
 $('ladder-open').onclick = () => lad.open()
 // ---- title screen: only on a fresh visit to the start of a battle (a shared moment link skips it)
 if (!hashT && params.get('ladder') === null) {
+  document.body.classList.add('intro') // title, premise and roll-call own the screen; the controls arrive with the battle
   const ts = document.createElement('div'); ts.id = 'title'
   ts.innerHTML = `<div class="tt-in"><div class="tt-deva" lang="hi">हरकारा</div><h1>HARKARA</h1>
     <p>Four AI models command four houses in a river war. None of them can see the battlefield: every order is carried by a rider who can be caught, shot or lost, and every captured letter can be read.</p>
@@ -127,7 +128,7 @@ $('houses').innerHTML = init.houses.map((h: any) => `<div class="house" data-h="
   end = await get('end.json')
   tale = story(events, letters, COLOR, $('stage'), init.houses.every((h: any) => h.model === 'scripted'), h => {
     if (h && !beliefOf) { autoBelief = true; ($(`beliefs`).querySelector(`[data-v="${h}"]`) as HTMLElement | null)?.click(); setTimeout(() => { if (autoBelief) { autoBelief = false; ($(`beliefs`).firstElementChild as HTMLElement)?.click() } }, 5000) }
-  })
+  }, (x, y) => { shot = { x, y, from: t, until: t + 720, r: 430 } }) // the camera goes where the caption points
 })()
 while (!watches.length) await new Promise(r => setTimeout(r, 20))
 
@@ -362,7 +363,8 @@ function line(e: Ev): string | null {
   switch (e.type) {
     case 'thought': return `<div class="item" style="--c:${COLOR[e.house]}">${W(e)} <b>${e.house}</b> thinks: ${e.text.replace(/\b0 watches ago/g, 'just now').replace(/\b1 watches\b/g, '1 watch')}</div>`
     case 'courier': return e.kind === 'report' || L!.id !== e.id ? null : `<div class="item" style="--c:${COLOR[e.house]}">${W(e)} ${e.house} sends ${e.kind === 'decoy' ? 'a <b>decoy</b>' : `a ${e.cipher ? 'ciphered' : 'plain'} ${e.kind}`} to ${name(e.to)}${e.double ? ', two riders by two roads' : ''}${e.depart > e.t ? ' (leaves next watch, enciphering)' : ''}: <span class="mono">${e.plain}</span></div>`
-    case 'caught': case 'killed': return `<div class="item big" style="--c:#c0392b">${W(e)} <b>${e.type === 'caught' ? 'Intercepted' : 'Rider shot'}</b>: ${e.house}'s ${L?.kind ?? 'letter'} ${e.type === 'caught' ? 'taken' : 'destroyed'} by ${name(e.by)}${L && L.kind !== 'report' ? (L.cipher ? ' <small>(in cipher: unread)</small>' : `<br><span class="mono">${L.plain}</span>`) : ''}</div>`
+    case 'caught': case 'killed': { const who = squadInfo.find(x => x.id === e.by), by = who ? `${cap(who.house)}'s ${String(who.name).toLowerCase()}` : name(e.by), what = L?.kind === 'letter' ? 'letter' : L?.kind === 'decoy' ? 'decoy' : 'order'
+      return `<div class="item big" style="--c:#c0392b">${W(e)} ${by} ${e.type === 'caught' ? 'caught' : 'shot down'} <b>${cap(e.house)}'s</b> rider${L?.kind === 'report' ? '' : L?.cipher ? `, carrying a ciphered ${what}${e.type === 'caught' ? ' they cannot read yet' : ''}` : `, carrying a plain ${what}: <q>${String(L?.plain ?? '').toLowerCase().replace(/[.]$/, '')}</q>`}.</div>` }
     case 'lost': return L?.kind === 'report' || e.why === 'nobody left to receive it' ? null : `<div class="item" style="--c:#888">${W(e)} ${e.house} rider ${e.why}.</div>`
     case 'decode': return `<div class="item big" style="--c:${COLOR[e.house]}">${W(e)} <b>${e.house}</b> clerks ${e.readable ? '<b>can read</b>' : 'work on'} ${L?.house}'s letter:<br><span class="mono">${e.text}</span><br><small>truth: <span class="mono">${L?.plain}</span></small></div>`
     case 'intel': return e.plain ? null : `<div class="item" style="--c:${COLOR[e.house]}">${W(e)} captured ${e.from} letter reaches ${e.house} camp: <span class="mono">${e.text}</span></div>`

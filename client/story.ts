@@ -8,7 +8,7 @@ const lower = (s: string) => s.toLowerCase().replace(/\b(west|middle|east) ford\
 const SQUAD: Record<string, string> = { 'inf-1': 'first foot', 'inf-2': 'second foot', 'arch-1': 'bowmen', 'cav-1': 'horsemen', 'ele-1': 'elephants' }
 const squadName = (id: string) => { const [h, ...r] = id.split('-'); return `${CAP(h)}'s ${SQUAD[r.join('-')] ?? r.join(' ')}` }
 
-export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<string, string>, stage: HTMLElement, rehearsal = false, onBelief: (h: string | null) => void = () => {}) {
+export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<string, string>, stage: HTMLElement, rehearsal = false, onBelief: (h: string | null) => void = () => {}, onFocus: (x: number, y: number) => void = () => {}) {
   // ---- the premise, once, before the opening scene
   const intro = document.createElement('div')
   intro.id = 'premise'
@@ -33,11 +33,11 @@ export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<stri
   box.id = 'narrator'
   stage.append(box)
   type Letter = { from: string; to: string; seal: 'intact' | 'broken'; head: string; cipher: string | null; plain: string; reveal: boolean }
-  const lines: { t: number; seq: number; html: string; c: string; hold: number; letter?: Letter; belief?: string }[] = []
+  const lines: { t: number; seq: number; html: string; c: string; hold: number; letter?: Letter; belief?: string; x?: number; y?: number }[] = []
   const firstDecode = new Set<string>()
   const RANK: Record<string, number> = { end: 9, standard: 8, decode: 7, truce: 6, caught: 5, killed: 4, smoke: 3, clash: 3, open: 3, destroyed: 2, rout: 1 }
-  const cand: { t: number; seq: number; html: string; c: string; hold: number; r: number; letter?: Letter; belief?: string }[] = []
-  const say = (e: Ev, html: string, c: string, hold = 140, letter?: Letter) => cand.push({ t: e.t, seq: e.seq, html, c, hold, r: RANK[e.type] ?? 0, letter })
+  const cand: { t: number; seq: number; html: string; c: string; hold: number; r: number; letter?: Letter; belief?: string; x?: number; y?: number }[] = []
+  const say = (e: Ev, html: string, c: string, hold = 140, letter?: Letter) => cand.push({ t: e.t, seq: e.seq, html, c, hold, r: RANK[e.type] ?? 0, letter, x: e.x, y: e.y })
   const toName = (to: string) => to.includes('-') ? squadName(to) : `the ${CAP(to.replace('-camp', ''))} camp`
   const truces = new Set<string>()
   const PLACES: [string, number, number][] = [['the west ford', 200, 500], ['the middle ford', 500, 500], ['the east ford', 800, 500], ['the ferry', 660, 500], ['Nong village', 500, 220], ['Dhara village', 500, 780]]
@@ -109,7 +109,7 @@ export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<stri
     const hit = events.find(e => e.type === 'clash' && e.t > d.t && e.t < d.t + 4 * 300 && Math.hypot(e.x - fx, e.y - fy) < 110 && [e.a, e.b].some((s: string) => s.startsWith(who)) && [e.a, e.b].some((s: string) => s.startsWith(L.house)))
     if (!hit) continue
     paid.add(d.letter)
-    cand.push({ t: hit.t, seq: hit.seq, r: 8, hold: 0, c: COLOR[who], belief: L.house, html: `<b style="color:${COLOR[who]}">${CAP(who)} knew.</b> It had read ${CAP(L.house)}'s letter: <span class="mono">${L.plain}</span> Now ${CAP(L.house)} arrives at ${m[0].toLowerCase().replace(/^/, 'the ')}, and ${CAP(who)} is already there.` })
+    cand.push({ t: hit.t, seq: hit.seq, r: 8, hold: 0, c: COLOR[who], belief: L.house, x: hit.x, y: hit.y, html: `<b style="color:${COLOR[who]}">${CAP(who)} knew.</b> It had read ${CAP(L.house)}'s letter: <span class="mono">${L.plain}</span> Now ${CAP(L.house)} arrives at ${m[0].toLowerCase().replace(/^/, 'the ')}, and ${CAP(who)} is already there.` })
   }
   // the finale: the last watches are announced, with what it takes to win outright
   const last = events.find(e => e.type === 'watch' && e.watch === 28)
@@ -156,6 +156,7 @@ export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<stri
         shown = i; until = performance.now() + 4200 // held in real seconds, whatever the playback speed
         box.innerHTML = `<div class="nr-line" style="--c:${lines[i].c}">${lines[i].html}</div>`
         if (lines[i].letter) openLetter(lines[i].letter!)
+        if (lines[i].x != null) onFocus(lines[i].x!, lines[i].y!) // the camera shows what the caption says
         onBelief(lines[i].belief ?? null) // the misled general's picture of the field, for the moment its plan is used against it
         box.classList.add('on')
       } else if (i > shown) shown = i // stale (jumped past it): skip
