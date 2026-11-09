@@ -98,6 +98,24 @@ export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<stri
       }
     }
   }
+  // the payoff: a plan that was read, and the reader then met that army where the letter said it would be
+  const FORDPOS: Record<string, [number, number]> = { 'WEST FORD': [200, 500], 'MIDDLE FORD': [500, 500], 'EAST FORD': [800, 500] }
+  const paid = new Set<string>()
+  for (const d of events) {
+    if (d.type !== 'decode' || !d.readable || paid.has(d.letter)) continue
+    const L = letters.get(d.letter), m = String(L?.plain ?? '').match(/(WEST|MIDDLE|EAST) FORD/)
+    if (!L || !m) continue
+    const [fx, fy] = FORDPOS[m[0]], who = d.house
+    const hit = events.find(e => e.type === 'clash' && e.t > d.t && e.t < d.t + 4 * 300 && Math.hypot(e.x - fx, e.y - fy) < 110 && [e.a, e.b].some((s: string) => s.startsWith(who)) && [e.a, e.b].some((s: string) => s.startsWith(L.house)))
+    if (!hit) continue
+    paid.add(d.letter)
+    cand.push({ t: hit.t, seq: hit.seq, r: 8, hold: 0, c: COLOR[who], html: `<b style="color:${COLOR[who]}">${CAP(who)} knew.</b> It had read ${CAP(L.house)}'s letter: <span class="mono">${L.plain}</span> Now ${CAP(L.house)} arrives at ${m[0].toLowerCase().replace(/^/, 'the ')}, and ${CAP(who)} is already there.` })
+  }
+  // the finale: the last watches are announced, with what it takes to win outright
+  const last = events.find(e => e.type === 'watch' && e.watch === 28)
+  if (last) cand.push({ t: last.t, seq: last.seq, r: 8, hold: 0, c: '#d9b45a', html: '<b>Three watches left.</b> A house that holds two fords alone at the end wins outright. Otherwise it goes to points: 100 for each ford held alone, plus every soldier still standing.' })
+  const fin = events.find(e => e.type === 'watch' && e.watch === 30)
+  if (fin) cand.push({ t: fin.t, seq: fin.seq, r: 8, hold: 0, c: '#d9b45a', html: '<b>The last watch.</b> Whoever stands alone at a ford when it ends holds it. Armies still fighting there hold nothing.' })
   // the most important moments win: walk by rank, keep a line only if the narrator is free for its whole hold
   const busy: [number, number][] = []
   for (const l of [...cand].sort((a, b) => b.r - a.r || a.t - b.t)) {

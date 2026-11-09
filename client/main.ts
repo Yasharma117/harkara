@@ -415,14 +415,14 @@ function predict() {
   for (const p of done) { if (!p.right) break; streak++ }
   const cap = (h: string) => h[0].toUpperCase() + h.slice(1)
   $('predict').innerHTML = !mine
-    ? t < TPW ? `<b>Who wins?</b> <small>Pick to start, or press Play.</small><br>${HOUSES.map(h => `<button data-h="${h}">${cap(h)}</button>`).join('')}` : '<small>Predictions close after watch 1.</small>'
+    ? t < 3 * TPW ? `<b>Who wins?</b> <small>Pick to start, or press Play.</small><br>${HOUSES.map(h => `<button data-h="${h}">${cap(h)}</button>`).join('')}` : '<small>Predictions closed after watch 3.</small>'
     : mine.right === undefined ? `Your pick: <b>${cap(mine.pick)}</b>`
     : `You picked <b>${cap(mine.pick)}</b>: ${mine.right ? 'right' : 'wrong'}. Streak: <b>${streak}</b>`
 }
 if (!picks[id] && t === 0) setPlaying(false) // hold the start so there's time to pick; Play skips it
 $('predict').onclick = e => {
   const h = (e.target as HTMLElement).dataset.h
-  if (h && t < TPW) { picks[id] = { pick: h }; savePicks(); predict(); setPlaying(true) }
+  if (h && t < 3 * TPW) { picks[id] = { pick: h }; savePicks(); predict(); if (t < 30) setPlaying(true) }
 }
 
 // ---- mailbag: every letter sent so far, its fate as of now (no spoilers), what the captor has decoded
