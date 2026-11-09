@@ -4,7 +4,7 @@ const KEY = 'harkara-sound'
 type House = { id: string; name: string; line: string }
 
 export async function voice(id: string, houses: House[], COLOR: Record<string, string>, portrait: (h: string) => string, stage: HTMLElement) {
-  const clips: Record<string, string> = await fetch(`replay/${id}/audio.json`).then(r => (r.ok ? r.json() : {})).catch(() => ({}))
+  const clips: Record<string, string> = {} // voiceover removed: the roll-call cards and captions carry the words
   let on = localStorage.getItem(KEY) !== 'off'
   let speaking: HTMLAudioElement | null = null
   const play = (key: string) => {

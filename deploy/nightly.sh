@@ -11,11 +11,6 @@ ID=${ID:-daily-$(TZ=Asia/Kolkata date +%F)}
 node --env-file=.env engine/run.ts --models --rotate "$(( $(date -u +%s) / 86400 ))" --id "$ID" --seed "$(printf %s "$ID" | cksum | cut -d' ' -f1)"
 # then tonight's Doctrine Ladder on the local model (exit 2 = model server down; entries stay queued for the next run)
 node --env-file=.env engine/ladder.ts || [ $? -eq 2 ]
-# voice every finished battle that has no audio yet (Kokoro-82M on the CPU; a voice failure never blocks the battle)
-npm ci --no-audit --no-fund --silent || true
-for d in client/public/replay/daily-* client/public/replay/ladder-*; do
-  [ -f "$d/end.json" ] && [ ! -f "$d/audio.json" ] && { node tools/voice.ts "$(basename "$d")" || echo "voice failed for $d"; }
-done
 git checkout -q -B "battle/$ID"
 git add "client/public/replay/$ID" client/public/replay/index.json
 git add client/public/replay/ladder-* client/public/replay/ladder.json 2>/dev/null || true

@@ -31,8 +31,6 @@ Drop the PNGs in `harkara/assets/raw/` (or attach them in chat). I run `npm run 
 ## What runs every night on the box (02:00 IST)
 1. The daily battle with the four model generals (Groq / NVIDIA / OpenRouter, local model as fallback).
 2. The Doctrine Ladder: tonight's entries, every house on the local Gemma 4 E4B, so only the doctrines differ.
-3. Every new battle is voiced (one voice per general).
-4. All of it is pushed to `battle/<date>` for review; merge it to publish (Cloudflare Pages redeploys on merge).
+3. All of it is pushed to `battle/<date>` for review; merge it to publish (Cloudflare Pages redeploys on merge).
 
 ## Known gaps
-- Voice: the nightly voices each new battle with Kokoro-82M on the CPU (`node tools/voice.ts <battle>` by hand). Listen to a few and tell me if it sounds cheap; the spec says drop it if so.
