@@ -9,7 +9,7 @@ from mathutils import Vector
 
 a = argparse.ArgumentParser()
 a.add_argument('--skeleton', required=True); a.add_argument('--mesh', required=True); a.add_argument('--out', required=True)
-a.add_argument('--apose', type=float, default=0.0); a.add_argument('--strip-skin', action='store_true')
+a.add_argument('--apose', type=float, default=0.0); a.add_argument('--faces', type=int, default=0); a.add_argument('--strip-skin', action='store_true')
 args = a.parse_args(sys.argv[sys.argv.index('--') + 1:])
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -40,6 +40,10 @@ bpy.ops.object.parent_clear(type='CLEAR_KEEP_TRANSFORM')
 if len(meshes) > 1: bpy.ops.object.join()
 mesh = bpy.context.view_layer.objects.active
 bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+if args.faces and len(mesh.data.polygons) > args.faces:  # generated meshes are dense: thin them for a crowd
+    d = mesh.modifiers.new('decimate', 'DECIMATE'); d.ratio = args.faces / len(mesh.data.polygons)
+    bpy.ops.object.modifier_apply(modifier=d.name)
+    print(f'DECIMATED to {len(mesh.data.polygons)} faces')
 
 # ---- fit: same height as the skeleton, feet on its floor, centred on it
 bones = [arm.matrix_world @ b.head_local for b in arm.data.bones] + [arm.matrix_world @ b.tail_local for b in arm.data.bones]
@@ -125,5 +129,5 @@ arm.animation_data_create()
 for act in actions:
     tr = arm.animation_data.nla_tracks.new(); tr.name = act.name
     st = tr.strips.new(act.name, int(act.frame_range[0]), act); st.name = act.name
-bpy.ops.export_scene.gltf(filepath=args.out, export_format='GLB', export_animations=True, export_animation_mode='NLA_TRACKS', export_skins=True)
+bpy.ops.export_scene.gltf(filepath=args.out, export_format='GLB', export_animations=True, export_animation_mode='NLA_TRACKS', export_skins=True, export_vertex_color='ACTIVE')
 print(f'RIG_OK {args.out} groups={groups} actions={len(actions)} verts={len(mesh.data.vertices)}')
