@@ -9,10 +9,11 @@ import { join } from 'node:path'
 
 const [mode, url, out, ...rest] = process.argv.slice(2)
 const prof = mkdtempSync(join(tmpdir(), 'harkara-chrome-'))
-const chrome = spawn('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', ['--headless=new', '--remote-debugging-port=9334', `--user-data-dir=${prof}`, '--window-size=1400,900', '--autoplay-policy=no-user-gesture-required', '--use-angle=metal', '--enable-gpu-rasterization', '--ignore-gpu-blocklist', 'about:blank'], { stdio: 'ignore' })
+const PORT = 9400 + Math.floor(Math.random() * 500) // a fresh port each run: never attach to a leftover browser
+const chrome = spawn('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', ['--headless=new', `--remote-debugging-port=${PORT}`, `--user-data-dir=${prof}`, '--window-size=1400,900', '--autoplay-policy=no-user-gesture-required', '--use-angle=metal', '--enable-gpu-rasterization', '--ignore-gpu-blocklist', 'about:blank'], { stdio: 'ignore' })
 const done = async code => { const gone = new Promise(r => chrome.once('exit', r)); chrome.kill(); await gone; try { execSync(`pkill -f ${prof}`) } catch {} await new Promise(r => setTimeout(r, 500)); rmSync(prof, { recursive: true, force: true }); process.exit(code) }
 let tabs
-for (let i = 0; i < 20 && !tabs; i++) { await new Promise(r => setTimeout(r, 500)); tabs = await fetch('http://127.0.0.1:9334/json').then(r => r.json()).catch(() => null) }
+for (let i = 0; i < 20 && !tabs; i++) { await new Promise(r => setTimeout(r, 500)); tabs = await fetch(`http://127.0.0.1:${PORT}/json`).then(r => r.json()).catch(() => null) }
 const ws = new WebSocket(tabs.find(t => t.type === 'page').webSocketDebuggerUrl)
 await new Promise(r => (ws.onopen = r))
 let n = 0, frames = 0; const wait = new Map(), times = [], clips = []
