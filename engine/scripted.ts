@@ -83,7 +83,7 @@ export function scripted(h: HouseId): General {
       }
       const horse = free(['cav'])[0], prey = foes.filter(s => s.type === 'arch' || s.type === 'inf').sort((x, y) => dist(x, horse ?? x) - dist(y, horse ?? y))[0]
       if (horse && prey && v.watch >= 6 && v.watch % 4 === 1) { const at = nearestNode(prey.x, prey.y).id; override.set(horse.id, at); order(horse.id, 'attack', at); notes.push(`Horse ride down ${prey.house} ${prey.name} at ${prey.place}.`) }
-      if (v.watch >= 21 && v.watch % 3 === 0) {
+      if (v.watch >= 21 && v.watch <= 27 && v.watch % 3 === 0) { // the push ends in time for the field to settle: a last-second pile-up on every ford is no finale
         // the last push: everything onto the ford we don't hold that has the fewest enemies reported at it
         const target = FORDS.filter(f => !v.own.some(s => dist(s, node(f)) < 50)).sort((x, y) => foes.filter(s => dist(s, node(x)) < 120).length - foes.filter(s => dist(s, node(y)) < 120).length)[0]
         if (target) for (const s of free(['inf', 'ele', 'arch'])) { override.set(s.id, target); order(s.id, 'attack', target) }

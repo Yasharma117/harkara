@@ -28,7 +28,7 @@ let t = Number(hashT ?? params.get('t') ?? 0), playing = !hashT, speed = 8, beli
 for (const b of index) $('battle').append(new Option(b.id, b.id, false, b.id === id)) // no winner here: it would spoil Predict
 $('battle').onchange = e => { location.hash = (e.target as HTMLSelectElement).value; location.reload() }
 const playBtn = $('play')
-let busyIntro = false
+let busyIntro = false, autoBelief = false
 let vo: Awaited<ReturnType<typeof voice>> | null = null, opened = false, tale: ReturnType<typeof story> | null = null
 const setPlaying = (p: boolean) => {
   if (vo?.busy || busyIntro) return // the opening scene starts the battle when it ends
@@ -40,7 +40,7 @@ playBtn.onclick = () => setPlaying(!playing)
 const group = (el: string, opts: [string, string | number | null][], pick: (v: any) => void, init: any) => {
   for (const [label, v] of opts) {
     const b = document.createElement('button')
-    b.textContent = label
+    b.textContent = label; b.dataset.v = String(v)
     b.setAttribute('aria-pressed', String(v === init))
     b.onclick = () => { $(el).querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', 'false')); b.setAttribute('aria-pressed', 'true'); pick(v) }
     $(el).append(b)
@@ -56,7 +56,8 @@ group('views', [['Map', 'map'], ['Diorama', 'diorama']], async v => {
 }, view)
 if (params.get('view') === 'diorama') ($('views').lastElementChild as HTMLButtonElement).click()
 group('speeds', [['2×', 2], ['8×', 8], ['32×', 32]], v => (speed = v), speed)
-group('beliefs', [['Truth', null], ...HOUSES.map(h => [h[0].toUpperCase() + h.slice(1), h] as [string, string])], v => (beliefOf = v), null)
+group('beliefs', [['Truth', null], ...HOUSES.map(h => [h[0].toUpperCase() + h.slice(1), h] as [string, string])], v => { beliefOf = v }, null)
+$('beliefs').addEventListener('click', e => { if (e.isTrusted) autoBelief = false }) // the viewer's own choice wins over the director's
 const scrub = $('scrub') as HTMLInputElement
 scrub.max = String(TOTAL) // the end event lands on tick TOTAL
 scrub.oninput = () => { t = Number(scrub.value); setPlaying(false) }
@@ -124,7 +125,9 @@ $('houses').innerHTML = init.houses.map((h: any) => `<div class="house" data-h="
     addMarks(wf.events)
   }
   end = await get('end.json')
-  tale = story(events, letters, COLOR, $('stage'), init.houses.every((h: any) => h.model === 'scripted'))
+  tale = story(events, letters, COLOR, $('stage'), init.houses.every((h: any) => h.model === 'scripted'), h => {
+    if (h && !beliefOf) { autoBelief = true; ($(`beliefs`).querySelector(`[data-v="${h}"]`) as HTMLElement | null)?.click(); setTimeout(() => { if (autoBelief) { autoBelief = false; ($(`beliefs`).firstElementChild as HTMLElement)?.click() } }, 5000) }
+  })
 })()
 while (!watches.length) await new Promise(r => setTimeout(r, 20))
 
@@ -314,6 +317,8 @@ function context(at: { x: number; y: number }, pos: { x: number; y: number; flag
 }
 function director(tt: number, pos: { x: number; y: number; flags: number }[]) {
   // hold every shot at least ~5 s of play, so the camera settles; only a bigger moment may cut in early
+  // the battle opens wide, and the camera pulls back to the whole valley for a breath after every story
+  if (tt < 2 * TPW || (shot && tt >= Math.max(shot.until, shot.from + 720) && tt < Math.max(shot.until, shot.from + 720) + 260)) return null
   if (shot && tt >= shot.from && tt < Math.max(shot.until, shot.from + 720)) { // ~9 s at 8×: long enough to follow one army
     const urgent = events.find(e => e.t > tt && e.t < tt + 120 && e.type === 'standard')
     if (!urgent) return shot
@@ -350,7 +355,7 @@ function director(tt: number, pos: { x: number; y: number; flags: number }[]) {
 // ---- feed
 const name = (sid: string) => { const s = squadInfo.find(x => x.id === sid); return s ? `${s.house} ${s.name}` : sid.replace('-camp', '') }
 const W = (e: Ev) => `<small>w${Math.floor(e.t / TPW) + 1}</small>`
-const HEADLINE = new Set(['caught', 'killed', 'decode', 'truce', 'smoke', 'standard', 'destroyed', 'end', 'intel'])
+const HEADLINE = new Set(['caught', 'killed', 'decode', 'truce', 'smoke', 'standard', 'destroyed', 'end'])
 function line(e: Ev): string | null {
   if (!allFeed && (!HEADLINE.has(e.type) || (e.type === 'decode' && !e.readable) || ((e.type === 'caught' || e.type === 'killed') && letters.get(e.letter)?.kind === 'report'))) return null // headlines: only what changes the story
   const L = letters.get(e.letter)
