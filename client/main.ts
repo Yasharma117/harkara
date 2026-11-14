@@ -25,7 +25,7 @@ const firstRead = new Map<string, number>() // house:letter → seq of the first
 let end: any = null
 
 // ---- controls
-let t = Number(hashT ?? params.get('t') ?? 0), playing = !hashT, speed = 8, beliefOf: string | null = null
+let t = Number(hashT ?? params.get('t') ?? 0), playing = !hashT, speed = 4, beliefOf: string | null = null
 for (const b of index) $('battle').append(new Option(b.id, b.id, false, b.id === id)) // no winner here: it would spoil Predict
 $('battle').onchange = e => { location.hash = (e.target as HTMLSelectElement).value; location.reload() }
 const playBtn = $('play')
@@ -56,7 +56,7 @@ group('views', [['Map', 'map'], ['Diorama', 'diorama']], async v => {
   if (v === 'map') resize()
 }, view)
 if (params.get('view') === 'diorama') ($('views').lastElementChild as HTMLButtonElement).click()
-group('speeds', [['2×', 2], ['8×', 8], ['32×', 32]], v => (speed = v), speed)
+group('speeds', [['2×', 2], ['4×', 4], ['8×', 8], ['32×', 32]], v => (speed = v), speed)
 group('beliefs', [['Truth', null], ...HOUSES.map(h => [h[0].toUpperCase() + h.slice(1), h] as [string, string])], v => { beliefOf = v }, null)
 $('beliefs').addEventListener('click', e => { if (e.isTrusted) autoBelief = false }) // the viewer's own choice wins over the director's
 const scrub = $('scrub') as HTMLInputElement

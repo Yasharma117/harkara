@@ -430,7 +430,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
           const D = q.type === 'ele' ? 30 : 26, px = fx - 0.15 * fh * (flag?.aspect ?? 0.667) * flip + touching * 46, lift = fh * 0.95
           const eh = Math.min(D * 0.5, (D * 0.74) / bb.aspect), ey = lift + (D - eh) / 2
           place(roundel.mesh, rn, px, fy + 0.5, D, D, yaw, 0, lift)
-          { const bw = D * 1.25, bh = 4.2; place(barBg, rn, px, fy + 0.6, bw + 2, bh + 2, yaw, 0, lift - 4); const k = Math.max(0, Math.min(1, q.str / 100)); P.copy(W(px, fy + 0.7, lift - 4)); Q.setFromAxisAngle(up, yaw); P.add(new THREE.Vector3(-(1 - k) * bw / 2, 0, 0).applyQuaternion(Q)); S.set(Math.max(0.01, bw * k), bh, 1); M.compose(P, Q, S); barFg.setMatrixAt(rn, M); barFg.setColorAt(rn, k > 0.5 ? c : k > 0.35 ? new THREE.Color('#d9a33a') : new THREE.Color('#c0392b')) }
+          { const bw = D * 1.25, bh = 4.2; place(barBg, rn, px, fy + 0.6, bw + 2, bh + 2, yaw, 0, lift - 4); const k = Math.max(0, Math.min(1, q.str / 100)); P.copy(W(px, fy + 0.7, lift - 4)); Q.setFromAxisAngle(up, yaw); P.add(new THREE.Vector3(-(1 - k) * bw / 2, 0, 0).applyQuaternion(Q)); S.set(Math.max(0.01, bw * k), bh, 1); M.compose(P, Q, S); barFg.setMatrixAt(rn, M); barFg.setColorAt(rn, c) }
           rn++
           place(ob.mesh, bn[q.house], px, fy + 1, eh * 1.14 * bb.aspect * flip, eh * 1.14, yaw, 0, ey - eh * 0.07); ob.tint.setXYZ(bn[q.house], 0.1, 0.08, 0.06)
           place(bb.mesh, bn[q.house], px, fy + 1.5, eh * bb.aspect * flip, eh, yaw, 0, ey); bb.tint.setXYZ(bn[q.house]++, c.r * 0.92, c.g * 0.92, c.b * 0.92)
