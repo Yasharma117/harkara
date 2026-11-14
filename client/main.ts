@@ -96,7 +96,7 @@ if (!hashT && params.get('ladder') === null) {
     ${init.houses.every((h: any) => h.model === 'scripted') ? '<p class="tt-note">This is a rehearsal battle fought by simple code generals. The daily AI battles start at launch.</p>' : ''}
     <small>${manifest.watches} watches · ${init.houses.map((h: any) => `<b style="color:${COLOR[h.id]}">${h.name}</b>`).join(' · ')}</small></div>
     <div class="tt-rules" hidden><h2>The rules</h2><ol>
-    <li><b>Win</b> by holding two of the three fords when the last watch ends, or by taking an enemy camp’s standard.</li>
+    <li><b>Win</b> by holding two of the three fords when the last watch ends, or by taking an enemy camp’s standard. A ford belongs to the house with the most soldiers at it. If nobody holds two, points decide: 100 per ford, plus every soldier still standing.</li>
     <li><b>Fog of war.</b> A general only knows what riders have brought it, and every report is already old.</li>
     <li><b>Orders ride.</b> Each order is a rider on the road. Foot and horse can catch riders, archers shoot them, mist loses them.</li>
     <li><b>Ciphers.</b> A plain letter is read at once by whoever catches it. A ciphered one leaves later but is decoded slowly, letter by letter.</li>
@@ -129,7 +129,7 @@ $('houses').innerHTML = init.houses.map((h: any) => `<div class="house" data-h="
   }
   end = await get('end.json')
   tale = story(events, letters, COLOR, $('stage'), init.houses.every((h: any) => h.model === 'scripted'), h => {
-    if (h && !beliefOf) { autoBelief = true; ($(`beliefs`).querySelector(`[data-v="${h}"]`) as HTMLElement | null)?.click(); setTimeout(() => { if (autoBelief) { autoBelief = false; ($(`beliefs`).firstElementChild as HTMLElement)?.click() } }, 5000) }
+    if (h && !beliefOf) { fordNote.innerHTML = `Now showing the field as <b style="color:${COLOR[h]}">${cap(h)}</b> believes it is. Ghosts mark where it thinks armies are.`; fordNote.classList.add('on'); clearTimeout(fordNoteT); fordNoteT = window.setTimeout(() => fordNote.classList.remove('on'), 5000); autoBelief = true; ($(`beliefs`).querySelector(`[data-v="${h}"]`) as HTMLElement | null)?.click(); setTimeout(() => { if (autoBelief) { autoBelief = false; ($(`beliefs`).firstElementChild as HTMLElement)?.click() } }, 5000) }
   }, (x, y) => { shot = { x, y, from: t, until: t + 720, r: 430 } }) // the camera goes where the caption points
 })()
 while (!watches.length) await new Promise(r => setTimeout(r, 20))
@@ -356,6 +356,7 @@ function director(tt: number, pos: { x: number; y: number; flags: number }[]) {
 }
 
 // ---- feed
+const nice = (sid: string) => { const s = squadInfo.find(x => x.id === sid); return s ? `<b>${cap(s.house)}'s</b> ${String(s.name).toLowerCase()}` : sid }
 const name = (sid: string) => { const s = squadInfo.find(x => x.id === sid); return s ? `${s.house} ${s.name}` : sid.replace('-camp', '') }
 const W = (e: Ev) => `<small>w${Math.floor(e.t / TPW) + 1}</small>`
 const HEADLINE = new Set(['caught', 'killed', 'decode', 'truce', 'smoke', 'standard', 'destroyed', 'end'])
@@ -371,10 +372,10 @@ function line(e: Ev): string | null {
     case 'lost': return L?.kind === 'report' || e.why === 'nobody left to receive it' ? null : `<div class="item" style="--c:#888">${W(e)} ${e.house} rider ${e.why}.</div>`
     case 'decode': return `<div class="item big" style="--c:${COLOR[e.house]}">${W(e)} <b>${e.house}</b> clerks ${e.readable ? '<b>can read</b>' : 'work on'} ${L?.house}'s letter:<br><span class="mono">${e.text}</span><br><small>truth: <span class="mono">${L?.plain}</span></small></div>`
     case 'intel': return e.plain ? null : `<div class="item" style="--c:${COLOR[e.house]}">${W(e)} captured ${e.from} letter reaches ${e.house} camp: <span class="mono">${e.text}</span></div>`
-    case 'truce': return `<div class="item big" style="--c:#4e7a5a">${W(e)} <b>Truce</b> between ${e.a} and ${e.b} until watch ${e.until}.</div>`
-    case 'smoke': return `<div class="item big" style="--c:${COLOR[e.house]}">${W(e)} ${e.house} lights smoke: <b>${e.code}</b>. Everyone sees it.</div>`
-    case 'rout': return `<div class="item" style="--c:#888">${W(e)} ${name(e.squad)} routs.</div>`
-    case 'destroyed': return `<div class="item" style="--c:#000">${W(e)} ${name(e.squad)} destroyed.</div>`
+    case 'truce': return `<div class="item big" style="--c:#4e7a5a">${W(e)} <b>${cap(e.a)}</b> and <b>${cap(e.b)}</b> agree a <b>truce</b>: no attacks on each other until watch ${e.until}.</div>`
+    case 'smoke': return `<div class="item big" style="--c:${COLOR[e.house]}">${W(e)} <b>${cap(e.house)}</b> lights a smoke signal at its camp: <b>${e.code}</b>. Its whole army obeys at once, but every enemy sees it too.</div>`
+    case 'rout': return `<div class="item" style="--c:#888">${W(e)} ${nice(e.squad)} break and run for their camp.</div>`
+    case 'destroyed': return `<div class="item" style="--c:#000">${W(e)} ${nice(e.squad)} are wiped out.</div>`
     case 'standard': return `<div class="item big" style="--c:#000">${W(e)} <b>${name(e.by)} takes the ${e.house} standard!</b></div>`
     case 'end': return `<div class="item big" style="--c:${COLOR[e.winner]}"><b>Battle over: ${e.reason}.</b>${end ? `<br><small>scores: ${Object.entries(end.scores).map(([h, s]) => `${h} ${s}`).join(' · ')}</small>` : ''}</div>`
   }
@@ -436,14 +437,14 @@ function predict() {
   for (const p of done) { if (!p.right) break; streak++ }
   const cap = (h: string) => h[0].toUpperCase() + h.slice(1)
   $('predict').innerHTML = !mine
-    ? t < 3 * TPW ? `<b>Who wins?</b> <small>Pick to start, or press Play.</small><br>${HOUSES.map(h => `<button data-h="${h}">${cap(h)}</button>`).join('')}` : '<small>Predictions closed after watch 3.</small>'
+    ? t < 6 * TPW ? `<b>Who wins?</b> <small>Pick to start, or press Play.</small><br>${HOUSES.map(h => `<button data-h="${h}">${cap(h)}</button>`).join('')}` : '<small>Predictions closed after watch 6.</small>'
     : mine.right === undefined ? `Your pick: <b>${cap(mine.pick)}</b>`
     : `You picked <b>${cap(mine.pick)}</b>: ${mine.right ? 'right' : 'wrong'}. Streak: <b>${streak}</b>`
 }
 if (!picks[id] && t === 0) setPlaying(false) // hold the start so there's time to pick; Play skips it
 $('predict').onclick = e => {
   const h = (e.target as HTMLElement).dataset.h
-  if (h && t < 3 * TPW) { picks[id] = { pick: h }; savePicks(); predict(); if (t < 30) setPlaying(true) }
+  if (h && t < 6 * TPW) { picks[id] = { pick: h }; savePicks(); predict(); if (t < 30) setPlaying(true) }
 }
 
 // ---- mailbag: every letter sent so far, its fate as of now (no spoilers), what the captor has decoded
@@ -510,18 +511,19 @@ function dispatchCard(lid: string, captor: string) {
   })
 }
 
-// ---- who holds each ford right now, by the same rule that decides the battle: one house alone within reach of it
+// ---- who holds each ford right now, by the same rule that decides the battle: the house with the most soldiers at it
 const strip = document.createElement('div'); strip.id = 'fords'; $('stage').append(strip)
-let stripKey = '', pendKey = '', pendAt = 0, shownF = ''
+let stripKey = '', pendKey = '', pendAt = 0, shownF = '', fordNoteT = 0
+const fordNote = document.createElement('div'); fordNote.id = 'fordnote'; $('stage').append(fordNote)
 function fordStrip(pos: { x: number; y: number; flags: number; str: number }[]) {
   const over = end && events.some(e => e.type === 'end' && e.t <= t)
   const held = init.map.fords.map((f: string) => {
     if (over) { const h = end.fords[f]; return { name: nodes.get(f).name.replace(' FORD', '').toLowerCase(), h, fight: false } }
-    const n = nodes.get(f), hs = [...new Set(pos.flatMap((p, i) => !(p.flags & 3) && Math.hypot(p.x - n.x, p.y - n.y) < 50 ? [squadInfo[i].house] : []))]
-    return { name: n.name.replace(' FORD', '').toLowerCase(), h: hs.length === 1 ? hs[0] : null, fight: hs.length > 1 }
+    const n = nodes.get(f), by = HOUSES.map(h => [h, pos.reduce((a, p, i) => a + (squadInfo[i].house === h && !(p.flags & 3) && Math.hypot(p.x - n.x, p.y - n.y) < 50 ? p.str : 0), 0)] as [string, number]).sort((a, b) => b[1] - a[1])
+    return { name: n.name.replace(' FORD', '').toLowerCase(), h: by[0][1] > 0 && by[0][1] > by[1][1] ? by[0][0] : null, fight: by[1][1] > 0 }
   })
   const two = HOUSES.find(h => held.filter((f: any) => f.h === h).length >= 2)
-  // the live score, counted as the end counts it: 100 per ford held alone, plus every surviving soldier
+  // the live score, counted as the end counts it: 100 per ford held, plus every surviving soldier
   const score = Object.fromEntries(HOUSES.map(h => [h, over ? end.scores[h] : held.filter((f: any) => f.h === h).length * 100 + Math.round(pos.reduce((a, p, i) => a + (squadInfo[i].house === h && !(p.flags & 2) ? p.str : 0), 0))]))
   const rank = HOUSES.slice().sort((a, b) => score[b] - score[a])
   const key = JSON.stringify(held) + two + rank.map(h => h + Math.round(score[h] / 5)).join()
@@ -529,9 +531,18 @@ function fordStrip(pos: { x: number; y: number; flags: number; str: number }[]) 
   const fkey = JSON.stringify(held) + two
   if (fkey !== pendKey) { pendKey = fkey; pendAt = performance.now() }
   if (!over && fkey !== shownF && performance.now() - pendAt < 900) return // a ford changing hands must hold a moment before it shows: no flicker
-  if (shownF && fkey !== shownF && !over) { const prev = JSON.parse(shownF.slice(0, shownF.lastIndexOf(']') + 1) || '[]'); const ch = held.findIndex((f: any, i: number) => prev[i] && prev[i].h !== f.h); if (ch >= 0) { const n = nodes.get(init.map.fords[ch]); shot = { x: n.x, y: n.y, from: t, until: t + 600, r: 460 } } }
+  if (shownF && fkey !== shownF && !over) {
+    const prev = JSON.parse(shownF.slice(0, shownF.lastIndexOf(']') + 1) || '[]'); const ch = held.findIndex((f: any, i: number) => prev[i] && prev[i].h !== f.h)
+    if (ch >= 0) {
+      const n = nodes.get(init.map.fords[ch]); shot = { x: n.x, y: n.y, from: t, until: t + 600, r: 460 }
+      // say why the score just moved: a ford is worth 100 to whoever has the most soldiers at it
+      const was = prev[ch].h, now = held[ch].h, nm = `the ${held[ch].name} ford`
+      fordNote.innerHTML = now ? `<b style="color:${COLOR[now]}">${cap(now)}</b> now has the most soldiers at ${nm}: <b>+100</b>${was ? ` · ${cap(was)} −100` : ''}` : `<b style="color:${COLOR[was]}">${cap(was)}</b> no longer holds ${nm} (${held[ch].fight ? 'matched by an enemy' : 'it has left'}): <b>−100</b>`
+      fordNote.classList.add('on'); clearTimeout(fordNoteT); fordNoteT = window.setTimeout(() => fordNote.classList.remove('on'), 4500)
+    }
+  }
   shownF = fkey; stripKey = key
-  strip.innerHTML = `<span class="fd-t">Fords</span>${held.map((f: any) => `<span class="fd" style="--c:${f.h ? COLOR[f.h] : '#8a7d66'}"><i></i>${f.name} <b>${f.h ? f.h : f.fight ? 'contested' : 'empty'}</b></span>`).join('')}${two ? `<span class="fd-win" style="--c:${COLOR[two]}">${two} holds two</span>` : ''}<span class="fd-t fd-sc" title="100 for each ford held alone, plus every soldier still standing">Score <i class="fd-how">100/ford + men</i></span>${rank.map((h, i) => `<span class="sc${i ? '' : ' lead'}" style="--c:${COLOR[h]}">${cap(h)} <b>${score[h]}</b></span>`).join('')}`
+  strip.innerHTML = `<span class="fd-t">Fords</span>${held.map((f: any) => `<span class="fd" style="--c:${f.h ? COLOR[f.h] : '#8a7d66'}"><i></i>${f.name} <b>${f.h ? f.h + (f.fight ? ' (fighting)' : '') : f.fight ? 'tied' : 'empty'}</b></span>`).join('')}${two ? `<span class="fd-win" style="--c:${COLOR[two]}">${two} holds two</span>` : ''}<span class="fd-t fd-sc" title="100 for each ford held alone, plus every soldier still standing">Score <i class="fd-how">100/ford + men</i></span>${rank.map((h, i) => `<span class="sc${i ? '' : ' lead'}" style="--c:${COLOR[h]}">${cap(h)} <b>${score[h]}</b></span>`).join('')}`
 }
 
 // ---- the ending: who won, why, and what each general's mail cost it
@@ -550,7 +561,7 @@ function ending() {
   const held = Object.entries(end.fords as Record<string, string | null>)
   const why = /two fords/.test(fin.reason) ? `${cap(fin.winner)} held two of the three fords at the last watch.`
     : /standard/i.test(fin.reason) ? fin.reason + '.'
-    : `Nobody held two fords at the last watch, so the battle went to points: 100 for each ford held alone, plus every surviving soldier.`
+    : `Nobody held two fords at the last watch, so the battle went to points: 100 for each ford held, plus every surviving soldier.`
   const rows = HOUSES.slice().sort((a, b) => end.scores[b] - end.scores[a])
   endCard.innerHTML = `<div class="ec-in"><small>Watch ${manifest.watches} · the battle is over</small>
     <h2 style="color:${COLOR[fin.winner]}">${init.houses.find((h: any) => h.id === fin.winner)?.name ?? cap(fin.winner)} wins</h2>
@@ -579,6 +590,8 @@ function pulseCards() {
       const el = document.querySelector<HTMLElement>(`.house[data-h="${h}"]`)
       if (!el) continue
       el.classList.remove('act'); void el.offsetWidth; el.classList.add('act', ...(e.type === 'caught' || e.type === 'decode' || e.type === 'truce' ? ['big'] : []))
+      const why = { caught: 'caught a rider', killed: 'shot a rider', decode: 'broke a cipher', truce: 'signed a truce', smoke: 'lit a smoke signal' }[e.type as string]
+      if (why && !(e.type === 'decode' && !e.readable)) { let w = el.querySelector<HTMLElement>('.why'); if (!w) { w = document.createElement('span'); w.className = 'why'; el.append(w) } w.textContent = why; w.classList.add('on'); clearTimeout((w as any)._t); (w as any)._t = setTimeout(() => w!.classList.remove('on'), 3500) }
       setTimeout(() => el.classList.remove('act', 'big'), 1400)
     }
   }

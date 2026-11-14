@@ -313,8 +313,10 @@ export async function runBattle(o: { id: string; seed: number; generals: Record<
 
   // final standing
   const holders = Object.fromEntries(FORDS.map(f => {
-    const hs = [...new Set(squads.filter(s => !s.dead && !s.routed && dist(s, node(f)) < 50).map(s => s.house))]
-    return [f, hs.length === 1 ? hs[0] : null]
+    // a ford belongs to the house with the most soldiers standing at it (an exact tie holds nothing). The old rule,
+    // "only if alone", ended most battles with every ford contested and nobody holding anything.
+    const by = HOUSES.map(h => [h, squads.filter(s => s.house === h && !s.dead && !s.routed && dist(s, node(f)) < 50).reduce((a, s) => a + s.strength, 0)] as const).sort((a, b) => b[1] - a[1])
+    return [f, by[0][1] > 0 && by[0][1] > by[1][1] ? by[0][0] : null]
   }))
   const scores = Object.fromEntries(HOUSES.map(h => [h, Object.values(holders).filter(x => x === h).length * 100 + Math.round(squads.filter(s => s.house === h && !s.dead).reduce((a, s) => a + s.strength, 0))]))
   const twoFords = HOUSES.find(h => Object.values(holders).filter(x => x === h).length >= 2)

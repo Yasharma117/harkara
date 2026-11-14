@@ -16,6 +16,7 @@ export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<stri
     <small>Harkara · the messenger</small>
     <h2>Four AI generals. One river. Three fords.</h2>
     <p>${rehearsal ? 'In the daily battles each house is commanded by a different AI model; this rehearsal uses simple code generals.' : 'Each house is commanded by a different AI model.'} Hold two fords when the last watch ends and you win.</p>
+    <p>The battle lasts <b>30 watches</b>. Each watch, every general reads the reports that reached it and sends new orders.</p>
     <p><b>No general can see the battlefield.</b> Every order rides out on horseback, and every report rides back hours late. Riders can be <b>caught</b>, <b>shot</b> or <b>lost in the mist</b>, and a captured letter can be decoded, letter by letter, until the enemy is reading your plans.</p>
     <p class="pm-hint">Watch the gap between what each general believes and what is really happening.</p>
   </div>`
@@ -62,7 +63,7 @@ export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<stri
       case 'decode':
         if (!e.readable || firstDecode.has(e.letter)) break
         firstDecode.add(e.letter)
-        say(e, `<b style="color:${COLOR[e.house]}">${CAP(e.house)}</b> has <b>broken the cipher</b> on a captured ${L?.house ? `${CAP(L.house)} ` : ''}letter: <span class="mono">${e.text}</span> They know the plan.`, COLOR[e.house], 190,
+        say(e, `<b style="color:${COLOR[e.house]}">${CAP(e.house)}</b> has <b>broken the cipher</b> on a captured ${L?.house ? `${CAP(L.house)} ` : ''}letter: <span class="mono">${e.text}</span> ${/_/.test(e.text) ? 'Enough to guess the plan.' : 'They know the plan.'}`, COLOR[e.house], 190,
           L ? { from: L.house, to: toName(L.to), seal: 'broken', head: `${CAP(e.house)}'s clerks break the cipher`, cipher: L.cipher, plain: e.text, reveal: true } : undefined)
         break
       case 'truce':
@@ -113,11 +114,9 @@ export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<stri
   }
   // the finale: the last watches are announced, with what it takes to win outright
   const last = events.find(e => e.type === 'watch' && e.watch === 28)
-  if (last) cand.push({ t: last.t, seq: last.seq, r: 8, hold: 0, c: '#d9b45a', html: '<b>Three watches left.</b> A house that holds two fords alone at the end wins outright. Otherwise it goes to points: 100 for each ford held alone, plus every soldier still standing.' })
+  if (last) cand.push({ t: last.t, seq: last.seq, r: 8, hold: 0, c: '#d9b45a', html: '<b>Three watches left.</b> A house that holds two fords at the end wins outright. A ford belongs to whoever has the most soldiers at it. Otherwise it goes to points: 100 for each ford held, plus every soldier still standing.' })
   const fin = events.find(e => e.type === 'watch' && e.watch === 30)
-  if (fin) cand.push({ t: fin.t, seq: fin.seq, r: 8, hold: 0, c: '#d9b45a', html: '<b>The last watch.</b> Whoever stands alone at a ford when it ends holds it. Armies still fighting there hold nothing.' })
-  const endEv = events.find(e => e.type === 'end')
-  if (endEv && /score/i.test(endEv.reason)) cand.push({ t: endEv.t - 30, seq: endEv.seq - 0.5, r: 8.5, hold: 0, c: '#d9b45a', html: '<b>No ford is held alone.</b> Every crossing ends contested or empty, so no one gets the 100 points a ford is worth. It comes down to soldiers still standing.' })
+  if (fin) cand.push({ t: fin.t, seq: fin.seq, r: 8, hold: 0, c: '#d9b45a', html: '<b>The last watch.</b> When it ends, each ford goes to the house with the most soldiers standing at it.' })
   // the most important moments win: walk by rank, keep a line only if the narrator is free for its whole hold
   const busy: [number, number][] = []
   for (const l of [...cand].sort((a, b) => b.r - a.r || a.t - b.t)) {

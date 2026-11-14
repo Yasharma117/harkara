@@ -19,7 +19,7 @@ interface Fig { root: THREE.Object3D; mixer: THREE.AnimationMixer; acts: Map<str
 type Mode = 'walk' | 'run' | 'fight' | 'shoot' | 'idle'
 interface Unit { kind: Kind; house: string; figs: Fig[]; lx: number; ly: number; yaw: number; shotAt: number; seen: boolean; spd: number; mode: Mode; next: Mode; nextAt: number; fightAt: number }
 
-export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?: number) => THREE.Vector3, squads: { id: string; house: string; type: string }[], HOUSE: Record<string, THREE.Color>) {
+export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?: number) => THREE.Vector3, squads: { id: string; house: string; type: string }[], HOUSE: Record<string, THREE.Color>, camps: Record<string, { x: number; y: number }> = {}) {
   const loader = new GLTFLoader()
   // models/*.glb normally; hosts that won't serve .glb get models/pack.json (base64), made by tools/pack-models.ts
   let pack: Promise<Record<string, string>> | null = null
@@ -30,7 +30,7 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
     const b = Uint8Array.from(atob((await pack)[f]), c => c.charCodeAt(0))
     return loader.parseAsync(b.buffer, 'models/')
   }
-  const [horse, bolt, foot, rogue, rider, ele, courier] = await Promise.all(['Horse.glb', 'arrow.glb', 'Infantry.glb', 'Archer.glb', 'Rider.glb', 'Elephant.glb', 'Courier.glb'].map(load))
+  const [horse, bolt, foot, rogue, rider, ele, courier, tent] = await Promise.all(['Horse.glb', 'arrow.glb', 'Infantry.glb', 'Archer.glb', 'Rider.glb', 'Elephant.glb', 'Courier.glb', 'Tent.glb'].map(load))
 
   // house colour goes on the neutral, light parts of the paint (armour, cloth); skin, wood and leather keep their colours
   const mats = new Map<string, THREE.Material>()
@@ -80,6 +80,13 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
     return { root: holder, mixer, acts, cur: '', dead: false, x: 0, y: 0, yaw: 0, diedAt: 0, row: 0, placed: false }
   }
 
+  // each general's command tent stands at its camp, in the house colour: where orders leave from and reports come home to
+  for (const [h, c] of Object.entries(camps)) {
+    const t = tent.scene.clone(), tf = fit(tent.scene, 46)
+    t.scale.setScalar(tf.k); t.position.copy(W(c.x, c.y - 26, 0)); t.position.y += tf.foot
+    t.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) m.material = houseMat(m.material as THREE.MeshStandardMaterial, h, 0.3) })
+    scene.add(t)
+  }
   const units = new Map<string, Unit>()
   for (const s of squads) {
     const kind = s.type as Kind, figs: Fig[] = []
@@ -143,6 +150,8 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
   ;(globalThis as any).__army = units // test hook
   return {
     runners: RUNNERS,
+    // where a squad's standing men are (in a fight they leave the squad's spot for the battle line): its standard follows them
+    centre(id: string) { const m = units.get(id)?.figs.filter(f => !f.dead && f.placed); return m?.length ? { x: m.reduce((a, f) => a + f.x, 0) / m.length, y: m.reduce((a, f) => a + f.y, 0) / m.length } : null },
     update(shown: Sq[], t: number, dt: number, couriers: { house: string; kind: string; x: number; y: number; path: { x: number; y: number }[] }[] = []) {
       const live = t !== lastT; lastT = t // battle paused: everyone freezes mid-stride
       const adt = live ? dt : 0

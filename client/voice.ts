@@ -21,7 +21,7 @@ export async function voice(id: string, houses: House[], COLOR: Record<string, s
   ov.id = 'opening'
   ov.hidden = true
   const m = id.match(/^(daily|ladder)-(\d{4}-\d{2}-\d{2})(?:-(\d+))?$/)
-  const title = m ? `${new Date(m[2] + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}${m[1] === 'ladder' ? ` · ladder battle ${m[3]}` : ''}` : id.replace(/-/g, ' ')
+  const title = m ? `${new Date(m[2] + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}${m[1] === 'ladder' ? ` · ladder battle ${m[3]}` : ''}` : /^grey-(\d+)$/.test(id) ? `Rehearsal battle ${id.split('-')[1]}` : id.replace(/-/g, ' ')
   ov.innerHTML = `<div class="op-title"><small>${m?.[1] === 'ladder' ? 'The Doctrine Ladder' : 'Today on the river'}</small><b>${title}</b></div><div class="op-cards">${houses.map(h => `<figure data-h="${h.id}" style="--c:${COLOR[h.id]}">${portrait(h.id) ? `<img src="${portrait(h.id)}" alt="">` : ''}<figcaption><b>${h.name}</b><q>${h.line}</q></figcaption></figure>`).join('')}</div><button class="op-skip">Skip</button>`
   stage.append(ov)
   let skip = () => {}

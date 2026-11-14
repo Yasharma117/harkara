@@ -191,7 +191,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
   const units: Record<string, Awaited<ReturnType<typeof batch>>> = {}
   for (const [k, [name, fb]] of Object.entries(SPRITES)) units[k] = await batch(name, fb, k === 'harkara' ? 80 : init.squads.length * PER_SQUAD, { tinted: true })
   // animated 3D foot, archers and horse; painted cut-outs stay for elephants (and for everyone if the models fail to load)
-  const army = await army3d(scene, W, init.squads, HOUSE).catch(e => { console.error('3D army failed, using cut-outs', e); return null })
+  const army = await army3d(scene, W, init.squads, HOUSE, Object.fromEntries(Object.keys(HOUSE).map(h => [h, init.map.nodes.find((n: any) => n.id === `${h}-camp`)]))).catch(e => { console.error('3D army failed, using cut-outs', e); return null })
   // a house pennant over each squad, dust behind riders, smoke columns for signals (art only; no placeholders)
   const none = placeholder(() => {})
   const banners: Record<string, Awaited<ReturnType<typeof batch>>> = {}
@@ -270,6 +270,15 @@ export async function createDiorama(host: HTMLElement, init: any) {
   const routes = new Map<string, THREE.Line>()
   const ringGeo = new THREE.RingGeometry(0.84, 1, 64); ringGeo.rotateX(-Math.PI / 2)
   const edgeGeo = new THREE.RingGeometry(0.78, 1.06, 64); edgeGeo.rotateX(-Math.PI / 2) // a dark edge behind each ring, so it reads on any house colour
+  const TAGTEX: Record<string, { m: THREE.SpriteNodeMaterial; w: number }> = Object.fromEntries(([['caught', 'RIDER CAUGHT', '#b3242f'], ['killed', 'RIDER SHOT', '#b3242f'], ['lost', 'RIDER LOST IN MIST', '#5a5348']] as const).map(([k, txt, bg]) => {
+    const c = document.createElement('canvas'), g = c.getContext('2d')!, f = '700 22px ui-sans-serif, system-ui, sans-serif'
+    g.font = f; c.width = Math.ceil(g.measureText(txt).width) + 28; c.height = 36
+    g.fillStyle = bg; g.beginPath(); g.roundRect(1, 1, c.width - 2, 34, 6); g.fill()
+    g.font = f; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#fff'; g.fillText(txt, c.width / 2, 19)
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace
+    return [k, { m: new THREE.SpriteNodeMaterial({ map: t, transparent: true, depthWrite: false, depthTest: false }), w: c.width }]
+  }))
+  const ringTags = Array.from({ length: 24 }, () => { const sp = new THREE.Sprite(); sp.visible = false; sp.renderOrder = 9; scene.add(sp); return sp })
   const rings = Array.from({ length: 24 }, () => { const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, depthTest: false, fog: false, color: '#c0392b' })); m.visible = false; m.renderOrder = 5; const e = new THREE.Mesh(edgeGeo, new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, depthTest: false, fog: false, color: '#2a2016' })); e.renderOrder = 4; m.add(e); scene.add(m); return m })
 
   let drawn: Snap['squads'] = [] // squads where they are drawn (contact pushes them apart), for label placement
@@ -407,7 +416,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
         lastX.set(q.id, q.x)
         const [full, cols, sp] = FORM[q.type], flip = facing.get(q.id) ?? 1, count = Math.max(1, Math.ceil((q.str / 100) * full)), rows = Math.ceil(full / cols)
         const c = HOUSE[q.house], routed = q.flags & 1, spread = routed ? 1.9 : 1 // rout reads as a broken formation, never as a paler house
-        if (!routed) { P.copy(W(q.x, q.y, 0.6)); S.set(cols * sp * 1.12 + 18, rows * sp * 0.75 * 1.25 + 16, 1); M.compose(P, flat, S); discs.setMatrixAt(dn, M); discs.setColorAt(dn++, c) }
+        if (!routed && !army) { P.copy(W(q.x, q.y, 0.6)); S.set(cols * sp * 1.12 + 18, rows * sp * 0.75 * 1.25 + 16, 1); M.compose(P, flat, S); discs.setMatrixAt(dn, M); discs.setColorAt(dn++, c) }
         for (let k = 0; k < (army ? 0 : count); k++) {
           const gx = ((k % cols) - (cols - 1) / 2) * spread, gy = (Math.floor(k / cols) - (rows - 1) / 2) * spread
           const jx = ((k * 37) % 7) - 3, jy = ((k * 53) % 5) - 2 // fixed jitter so blocks don't look gridded
@@ -418,7 +427,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
           b.tint.setXYZ(n[q.type]++, c.r, c.g, c.b)
         }
         // the squad's standard: a pennant pole carrying the house emblem on top, outlined in ink
-        const fh = (q.type === 'ele' ? 96 : 72) * (routed ? 0.6 : 1), fx = q.x - 6, fy = q.y - rows * sp * 0.35
+        const fh = (q.type === 'ele' ? 96 : 72) * (routed ? 0.6 : 1), at = army?.centre(q.id) ?? q, fx = at.x - 6, fy = at.y - rows * sp * 0.35
         if (flag) { place(flag.mesh, fl, fx, fy, fh * flag.aspect * flip, fh, yaw); flag.tint.setXYZ(fl++, c.r, c.g, c.b) }
         const bb = banners[q.house], ob = outlines[q.house]
         // one emblem per house per spot; other houses' emblems at the same spot step aside
@@ -488,14 +497,17 @@ export async function createDiorama(host: HTMLElement, init: any) {
       mist.instanceMatrix.needsUpdate = true
       // rings where riders are caught, shot or lost
       rings.forEach((r, i) => {
-        const f = s.flashes[i]; r.visible = !!f
-        if (!f) return
+        const f = s.flashes[i]; r.visible = !!f && !(army && f.type === 'clash') // the fighting itself shows where armies meet
+        const tag = ringTags[i]; tag.visible = false
+        if (!f || !r.visible) return
         // ring the units as they are drawn (spacing moves them off the simulation spot), not the empty ground they left
         let best = -1, bd = 90
         s.squads.forEach((q, k) => { const d = Math.hypot(q.x - f.x, q.y - f.y); if (!(q.flags & 2) && drawn[k] && d < bd) { bd = d; best = k } })
         let fx = best < 0 ? f.x : f.x + drawn[best].x - s.squads[best].x, fy = best < 0 ? f.y : f.y + drawn[best].y - s.squads[best].y // a catch or shot follows the squad that made it
         if (f.type === 'clash') { let n = 0, sx = 0, sy = 0; s.squads.forEach((q, k) => { if (!(q.flags & 2) && drawn[k] && Math.hypot(q.x - f.x, q.y - f.y) < 60) { sx += drawn[k].x; sy += drawn[k].y; n++ } }); if (n) { fx = sx / n; fy = sy / n } } // a clash rings the middle of everyone in it
         r.position.copy(W(fx, fy, 2)); r.scale.setScalar(16 + f.age * 50)
+        // every ring says what it marks
+        const tx = TAGTEX[f.type]; if (tx) { tag.visible = true; tag.material = tx.m; tag.position.copy(W(fx, fy - 26, 34)); tag.scale.set(tx.w * 0.3, 36 * 0.3, 1) }
         const m = r.material as THREE.MeshBasicNodeMaterial
         m.color.set(f.type === 'clash' ? '#efe3c4' : f.type === 'lost' ? '#ffffff' : '#e8321e'); m.opacity = (f.type === 'clash' && army ? 0.4 : 0.95) * (1 - f.age * 0.7) // with 3D fighting visible, contact rings only whisper
         ;((r.children[0] as THREE.Mesh).material as THREE.MeshBasicNodeMaterial).opacity = (f.type === 'clash' ? 0.15 : 0.7) * (1 - f.age * 0.7)
