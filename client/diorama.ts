@@ -408,7 +408,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
         const [full, cols, sp] = FORM[q.type], flip = facing.get(q.id) ?? 1, count = Math.max(1, Math.ceil((q.str / 100) * full)), rows = Math.ceil(full / cols)
         const c = HOUSE[q.house], routed = q.flags & 1, spread = routed ? 1.9 : 1 // rout reads as a broken formation, never as a paler house
         if (!routed) { P.copy(W(q.x, q.y, 0.6)); S.set(cols * sp * 1.12 + 18, rows * sp * 0.75 * 1.25 + 16, 1); M.compose(P, flat, S); discs.setMatrixAt(dn, M); discs.setColorAt(dn++, c) }
-        for (let k = 0; k < (army && q.type !== 'ele' ? 0 : count); k++) {
+        for (let k = 0; k < (army ? 0 : count); k++) {
           const gx = ((k % cols) - (cols - 1) / 2) * spread, gy = (Math.floor(k / cols) - (rows - 1) / 2) * spread
           const jx = ((k * 37) % 7) - 3, jy = ((k * 53) % 5) - 2 // fixed jitter so blocks don't look gridded
           const bob = moving ? Math.abs(Math.sin(time * 9 + k * 1.3)) * 1.6 : 0

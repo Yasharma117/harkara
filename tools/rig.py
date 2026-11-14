@@ -1,5 +1,5 @@
 # Rig a generated (static) mesh onto an existing skeleton and keep all of that skeleton's animations.
-#   tools/blender.sh --python tools/rig.py -- --skeleton client/public/models/Knight.glb --mesh new.glb --out client/public/models/Infantry.glb [--apose 30]
+#   tools/blender.sh --python tools/rig.py -- --skeleton assets/models/kaykit/Knight.glb --mesh new.glb --out client/public/models/Infantry.glb [--apose 30]
 # Steps: import the skeleton (armature + its actions), drop its own meshes; import the new mesh as one object, scale and
 # centre it to the skeleton's height; if the mesh was drawn in an A-pose (arms --apose degrees below horizontal) while the
 # skeleton rests in a T-pose, pose the arms down to match, bind, then bake the mesh back to the T-pose so every original
@@ -9,7 +9,7 @@ from mathutils import Vector
 
 a = argparse.ArgumentParser()
 a.add_argument('--skeleton', required=True); a.add_argument('--mesh', required=True); a.add_argument('--out', required=True)
-a.add_argument('--apose', type=float, default=0.0); a.add_argument('--faces', type=int, default=0); a.add_argument('--strip-skin', action='store_true')
+a.add_argument('--apose', type=float, default=0.0); a.add_argument('--faces', type=int, default=0); a.add_argument('--yaw', type=float, default=0.0); a.add_argument('--strip-skin', action='store_true')
 args = a.parse_args(sys.argv[sys.argv.index('--') + 1:])
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -45,10 +45,13 @@ if args.faces and len(mesh.data.polygons) > args.faces:  # generated meshes are 
     bpy.ops.object.modifier_apply(modifier=d.name)
     print(f'DECIMATED to {len(mesh.data.polygons)} faces')
 
+if args.yaw:  # turn the mesh to face the way the skeleton faces (side-view sheets come out turned 90°)
+    mesh.rotation_mode = 'XYZ'; mesh.rotation_euler[2] = math.radians(args.yaw); bpy.ops.object.transform_apply(rotation=True)  # glTF import leaves objects in quaternion mode
+
 # ---- fit: same height as the skeleton, feet on its floor, centred on it
 bones = [arm.matrix_world @ b.head_local for b in arm.data.bones] + [arm.matrix_world @ b.tail_local for b in arm.data.bones]
 bz0, bz1 = min(v.z for v in bones), max(v.z for v in bones)
-cx, cy = sum(v.x for v in bones) / len(bones), sum(v.y for v in bones) / len(bones)
+cx, cy = (min(v.x for v in bones) + max(v.x for v in bones)) / 2, (min(v.y for v in bones) + max(v.y for v in bones)) / 2  # box centre: a tail must not drag it
 vs = [mesh.matrix_world @ v.co for v in mesh.data.vertices]
 mz0, mz1 = min(v.z for v in vs), max(v.z for v in vs)
 mx, my = (min(v.x for v in vs) + max(v.x for v in vs)) / 2, (min(v.y for v in vs) + max(v.y for v in vs)) / 2

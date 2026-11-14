@@ -2,19 +2,20 @@
 // Foot march, fight and fall; archers loose crossbow bolts that fly; horsemen gallop. Elephants stay painted cut-outs
 // (diorama.ts) until a 3D elephant arrives. Models: client/public/models (licences in LICENSES.txt).
 import * as THREE from 'three/webgpu'
-import { texture, uv, vec3, mix, smoothstep, max, min, vertexColor } from 'three/tsl'
+import { texture, uv, vec3, mix, smoothstep, max, min, vertexColor, positionGeometry } from 'three/tsl'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js'
 
 type Sq = { id: string; house: string; type: string; x: number; y: number; str: number; flags: number }
-type Kind = 'inf' | 'arch' | 'cav'
-const PER: Record<Kind, number> = { inf: 24, arch: 16, cav: 8 }
-const COLS: Record<Kind, number> = { inf: 8, arch: 8, cav: 4 } // battle lines, not huddles: two ranks of foot, archers and horse abreast
-const GAP: Record<Kind, number> = { inf: 13, arch: 13, cav: 22 }
-const HEIGHT = { foot: 26, horse: 28, rider: 21 }
+type Kind = 'inf' | 'arch' | 'cav' | 'ele'
+const QUAD = (k: Kind) => k === 'cav' || k === 'ele' // four-legged: both ride the horse skeleton's clips
+const PER: Record<Kind, number> = { inf: 24, arch: 16, cav: 8, ele: 4 }
+const COLS: Record<Kind, number> = { inf: 8, arch: 8, cav: 4, ele: 2 } // battle lines, not huddles: two ranks of foot, archers and horse abreast
+const GAP: Record<Kind, number> = { inf: 13, arch: 13, cav: 22, ele: 40 }
+const HEIGHT = { foot: 26, horse: 28, rider: 21, ele: 52 }
 const MELEE = ['1H_Melee_Attack_Chop', '1H_Melee_Attack_Slice_Diagonal', '1H_Melee_Attack_Stab', '1H_Melee_Attack_Slice_Horizontal', 'Block_Attack']
 
-interface Fig { root: THREE.Object3D; mixer: THREE.AnimationMixer; acts: Map<string, THREE.AnimationAction>; cur: string; dead: boolean; rider?: Fig; x: number; y: number; yaw: number; diedAt: number; hitUntil: number }
+interface Fig { root: THREE.Object3D; mixer: THREE.AnimationMixer; acts: Map<string, THREE.AnimationAction>; cur: string; dead: boolean; x: number; y: number; yaw: number; diedAt: number; hitUntil: number }
 type Mode = 'walk' | 'run' | 'fight' | 'shoot' | 'idle'
 interface Unit { kind: Kind; house: string; figs: Fig[]; lx: number; ly: number; yaw: number; shotAt: number; seen: boolean; spd: number; mode: Mode; next: Mode; nextAt: number; fightAt: number }
 
@@ -29,12 +30,12 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
     const b = Uint8Array.from(atob((await pack)[f]), c => c.charCodeAt(0))
     return loader.parseAsync(b.buffer, 'models/')
   }
-  const [knight, horse, bolt, foot, rogue] = await Promise.all(['Knight.glb', 'Horse.glb', 'arrow.glb', 'Infantry.glb', 'Archer.glb'].map(load))
+  const [horse, bolt, foot, rogue, rider, ele] = await Promise.all(['Horse.glb', 'arrow.glb', 'Infantry.glb', 'Archer.glb', 'Rider.glb', 'Elephant.glb'].map(load))
 
   // house colour goes on the neutral, light parts of the paint (armour, cloth); skin, wood and leather keep their colours
   const mats = new Map<string, THREE.Material>()
-  const houseMat = (m: THREE.MeshStandardMaterial, house: string, vc = false) => {
-    const key = `${m.uuid}|${house}|${vc}`
+  const houseMat = (m: THREE.MeshStandardMaterial, house: string, vc = 0, band?: THREE.Box3) => { // vc: 0 = textured model; else the linear brightness above which neutral paint counts as cloth
+    const key = `${m.uuid}|${house}|${vc}|${!!band}`
     if (mats.has(key)) return mats.get(key)!
     const nm = new THREE.MeshStandardNodeMaterial({ roughness: 0.75, metalness: 0.05 })
     if (m.map) {
@@ -46,9 +47,13 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
     } else if (vc) {
       // generated models (batch 5) carry vertex colours: the off-white quilted cloth takes the house colour; skin, steel and leather stay
       const c = vertexColor().rgb, hi = max(c.r, max(c.g, c.b)), sat = hi.sub(min(c.r, min(c.g, c.b)))
-      const cloth = smoothstep(0.07, 0.15, sat).oneMinus().mul(smoothstep(0.14, 0.32, hi)) // measured in linear: quilting sits at 0.2–0.5
+      const cloth = smoothstep(0.07, 0.15, sat).oneMinus().mul(smoothstep(vc, vc + 0.18, hi)) // measured in linear: quilting sits at 0.2–0.5
       const hc = vec3(HOUSE[house].r, HOUSE[house].g, HOUSE[house].b)
-      nm.colorNode = mix(c, hc.mul(hi.mul(1.6).add(0.06)), cloth.mul(0.9))
+      // elephants: hide and cloth are the same grey, so colour only the caparison's place on the body — the middle band of
+      // its height, behind the head (the model faces +Z)
+      const ny = band ? positionGeometry.y.sub(band.min.y).div(band.max.y - band.min.y) : null, nz = band ? positionGeometry.z.sub(band.min.z).div(band.max.z - band.min.z) : null
+      const where = band ? smoothstep(0.36, 0.42, ny!).mul(smoothstep(0.7, 0.76, ny!).oneMinus()).mul(smoothstep(0.7, 0.76, nz!).oneMinus()) : 1
+      nm.colorNode = mix(c, hc.mul(hi.mul(1.6).add(0.06)), cloth.mul(0.9).mul(where))
     } else nm.color.copy(m.color)
     mats.set(key, nm)
     return nm
@@ -59,14 +64,14 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
     const b = new THREE.Box3().setFromObject(g), k = h / (b.max.y - b.min.y || 1)
     return { k, foot: -b.min.y * k }
   }
-  const footFit = fit(foot.scene, HEIGHT.foot), rogueFit = fit(rogue.scene, HEIGHT.foot), horseFit = fit(horse.scene, HEIGHT.horse), riderFit = fit(knight.scene, HEIGHT.rider)
+  const footFit = fit(foot.scene, HEIGHT.foot), rogueFit = fit(rogue.scene, HEIGHT.foot), horseFit = fit(horse.scene, HEIGHT.horse), riderFit = fit(rider.scene, HEIGHT.rider), eleFit = fit(ele.scene, HEIGHT.ele)
 
-  const make = (src: typeof knight, f: { k: number; foot: number }, house: string, prefix = ''): Fig => {
+  const make = (src: typeof horse, f: { k: number; foot: number }, house: string, prefix = '', cloth = 0.14, band = false): Fig => {
     const root = SkeletonUtils.clone(src.scene)
     root.scale.setScalar(f.k)
     root.traverse(o => {
       const m = o as THREE.Mesh
-      if (m.isMesh) { m.frustumCulled = false; m.material = houseMat(m.material as THREE.MeshStandardMaterial, house, !!m.geometry.attributes.color) }
+      if (m.isMesh) { m.frustumCulled = false; if (band && !m.geometry.boundingBox) m.geometry.computeBoundingBox(); m.material = houseMat(m.material as THREE.MeshStandardMaterial, house, m.geometry.attributes.color ? cloth : 0, band ? m.geometry.boundingBox! : undefined) }
     })
     const holder = new THREE.Group(); holder.add(root); root.position.y = f.foot
     const mixer = new THREE.AnimationMixer(root), acts = new Map<string, THREE.AnimationAction>()
@@ -77,17 +82,17 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
 
   const units = new Map<string, Unit>()
   for (const s of squads) {
-    if (s.type === 'ele') continue
     const kind = s.type as Kind, figs: Fig[] = []
     for (let i = 0; i < PER[kind]; i++) {
       if (kind === 'cav') {
         const h = make(horse, horseFit, s.house, 'AnimalArmature|')
-        const r = make(knight, riderFit, s.house); h.root.add(r.root); scene.remove(r.root)
-        r.root.position.set(0, HEIGHT.horse * 0.55, -1); h.rider = r
-        play(r, 'Sit_Chair_Idle')
+        // the rider is one seated piece, pinned to the horse's back so he rides its gallop and falls with it
+        const r = rider.scene.clone(); r.scale.setScalar(riderFit.k); r.position.set(0, HEIGHT.horse * 0.68 + HEIGHT.rider * 0.42, 0) // the mesh's origin is its middle: seat it on the saddle
+        r.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) { m.frustumCulled = false; m.material = houseMat(m.material as THREE.MeshStandardMaterial, s.house, 0.14) } })
+        h.root.add(r); h.root.updateMatrixWorld(true); h.root.getObjectByName('Torso2')?.attach(r)
         figs.push(h)
       } else {
-        const f = kind === 'arch' ? make(rogue, rogueFit, s.house) : make(foot, footFit, s.house)
+        const f = kind === 'ele' ? make(ele, eleFit, s.house, 'AnimalArmature|', 0.1, true) : kind === 'arch' ? make(rogue, rogueFit, s.house) : make(foot, footFit, s.house)
         // the generated archer carries his own bow; no crossbow to attach
         figs.push(f)
       }
@@ -161,7 +166,7 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
         const cos = Math.cos(u.yaw), sin = Math.sin(u.yaw), cols = COLS[u.kind], gap = GAP[u.kind] * (routed ? 1.8 : 1)
         u.figs.forEach((f, i) => {
           if (i >= alive) {
-            if (!f.dead && u.seen) { f.dead = true; f.diedAt = clock; play(f, u.kind === 'cav' ? 'Death' : Math.random() < 0.5 ? 'Death_A' : 'Death_B', true, 0.1); if (f.rider) play(f.rider, 'Death_A', true, 0.1) } // the body stays where he fell
+            if (!f.dead && u.seen) { f.dead = true; f.diedAt = clock; play(f, QUAD(u.kind) ? 'Death' : Math.random() < 0.5 ? 'Death_A' : 'Death_B', true, 0.1) } // the body stays where he fell
             if (!u.seen) f.root.visible = false
             // the fallen lie a few seconds, then sink into the grass, so fords don't fill with bodies
             const age = clock - f.diedAt
@@ -176,14 +181,14 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
             if (mode === 'fight' && foe) { const k = Math.min(45, Math.max(0, fd - 55) * 0.5) * (charging ? 0.4 + (clock - u.fightAt) / 2.2 : 1) + Math.sin(clock * 3 + i) * 4; f.x += Math.sin(u.yaw) * k; f.y += Math.cos(u.yaw) * k }
             if (mode === 'fight' && clock > f.hitUntil + 1.2 && Math.random() < adt * 0.5) f.hitUntil = clock + 0.6 // takes a blow now and then
             const ts = moving ? THREE.MathUtils.clamp(speed / (u.kind === 'cav' ? 60 : 22), 0.6, 2.6) : 1
-            if (u.kind === 'cav') play(f, mode === 'run' || charging ? 'Gallop' : mode === 'walk' ? 'Walk' : mode === 'fight' ? (i % 2 ? 'Attack_Kick' : 'Attack_Headbutt') : 'Idle')
+            if (QUAD(u.kind)) play(f, mode === 'run' || charging ? 'Gallop' : mode === 'walk' ? 'Walk' : mode === 'fight' ? (i % 2 ? 'Attack_Kick' : 'Attack_Headbutt') : 'Idle')
             else play(f, mode === 'run' || (charging && u.kind === 'inf') ? 'Running_A' : mode === 'walk' ? 'Walking_A' : mode === 'fight' ? (clock < f.hitUntil ? (i % 2 ? 'Hit_A' : 'Block_Hit') : MELEE[i % MELEE.length]) : mode === 'shoot' ? '2H_Ranged_Shooting' : u.kind === 'arch' ? '2H_Ranged_Aiming' : 'Idle')
             f.mixer.timeScale = ts
           }
           if (!(f.dead && clock - f.diedAt > 12)) f.root.position.copy(W(f.x, f.y, 0))
           f.root.rotation.y = f.yaw
-          f.mixer.update(adt); f.rider?.mixer.update(adt)
-          if (f.root.visible) { const r = u.kind === 'cav' ? 26 : 13; P.copy(W(f.x, f.y, 0.7)); S.set(r * (f.dead ? 1.5 : 1), r * 0.8, 1); M.compose(P, Q, S); blobs.setMatrixAt(bn++, M) }
+          f.mixer.update(adt)
+          if (f.root.visible) { const r = u.kind === 'ele' ? 44 : u.kind === 'cav' ? 26 : 13; P.copy(W(f.x, f.y, 0.7)); S.set(r * (f.dead ? 1.5 : 1), r * 0.8, 1); M.compose(P, Q, S); blobs.setMatrixAt(bn++, M) }
         })
         u.seen = true
         if (mode === 'fight' && Math.random() < adt * 5) { const f = u.figs[Math.floor(Math.random() * alive)]; if (f && !f.dead) puff(f.x + (Math.random() - 0.5) * 20, f.y + (Math.random() - 0.5) * 14) }
