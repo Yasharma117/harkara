@@ -30,7 +30,7 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
     const b = Uint8Array.from(atob((await pack)[f]), c => c.charCodeAt(0))
     return loader.parseAsync(b.buffer, 'models/')
   }
-  const [horse, bolt, foot, rogue, rider, ele] = await Promise.all(['Horse.glb', 'arrow.glb', 'Infantry.glb', 'Archer.glb', 'Rider.glb', 'Elephant.glb'].map(load))
+  const [horse, bolt, foot, rogue, rider, ele, courier] = await Promise.all(['Horse.glb', 'arrow.glb', 'Infantry.glb', 'Archer.glb', 'Rider.glb', 'Elephant.glb', 'Courier.glb'].map(load))
 
   // house colour goes on the neutral, light parts of the paint (armour, cloth); skin, wood and leather keep their colours
   const mats = new Map<string, THREE.Material>()
@@ -129,15 +129,21 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
   const puff = (x: number, y: number) => { const p = puffs[puffN++ % puffs.length]; Object.assign(p, { t0: clock, x, y, s: 26 + Math.random() * 22 }); p.sp.visible = !!dustTex }
   // soft blob shadows under every figure
   const blobTex = new THREE.CanvasTexture((() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d')!; const r = g.createRadialGradient(32, 32, 0, 32, 32, 32); r.addColorStop(0, 'rgba(20,18,12,.5)'); r.addColorStop(1, 'rgba(20,18,12,0)'); g.fillStyle = r; g.fillRect(0, 0, 64, 64); return c })())
-  const total = [...units.values()].reduce((a, u) => a + u.figs.length, 0)
+  const total = [...units.values()].reduce((a, u) => a + u.figs.length, 0) + 40 // + the runners
   const blobs = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicNodeMaterial({ map: blobTex, transparent: true, depthWrite: false }), total)
   blobs.frustumCulled = false; scene.add(blobs)
   const M = new THREE.Matrix4(), Q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2), S = new THREE.Vector3()
+  // the messengers: a pool of runners, re-dressed in the sender's colour as riders come and go
+  const RUNNERS = 40, courierFit = fit(courier.scene, HEIGHT.foot * 0.95)
+  let courierMat: THREE.MeshStandardMaterial | null = null
+  courier.scene.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) courierMat ??= m.material as THREE.MeshStandardMaterial })
+  const runners = Array.from({ length: RUNNERS }, () => { const f = make(courier, courierFit, 'rhino'); f.root.visible = false; play(f, 'Running_A'); return { f, house: 'rhino' } })
   let lastT = -1
 
   ;(globalThis as any).__army = units // test hook
   return {
-    update(shown: Sq[], t: number, dt: number) {
+    runners: RUNNERS,
+    update(shown: Sq[], t: number, dt: number, couriers: { house: string; kind: string; x: number; y: number; path: { x: number; y: number }[] }[] = []) {
       const live = t !== lastT; lastT = t // battle paused: everyone freezes mid-stride
       const adt = live ? dt : 0
       clock += adt
@@ -199,6 +205,17 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
           if (f && !f.dead) fire(W(f.x, f.y, 20), W(foe.x + (Math.random() - 0.5) * 40, foe.y + (Math.random() - 0.5) * 30, 6))
         }
       }
+      runners.forEach((r, i) => {
+        const c = couriers[i]
+        r.f.root.visible = !!c
+        if (!c) return
+        if (r.house !== c.house) { r.house = c.house; r.f.root.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) m.material = houseMat(courierMat!, c.house, 0.14) }) }
+        const to = c.path[0]
+        if (to && Math.hypot(to.x - c.x, to.y - c.y) > 1) r.f.root.rotation.y = Math.atan2(to.x - c.x, to.y - c.y)
+        r.f.root.position.copy(W(c.x, c.y, 0)); r.f.root.scale.setScalar(c.kind === 'report' ? 0.8 : 1)
+        r.f.mixer.timeScale = 1.6; r.f.mixer.update(adt)
+        P.copy(W(c.x, c.y, 0.7)); S.set(12, 10, 1); M.compose(P, Q, S); blobs.setMatrixAt(bn++, M)
+      })
       blobs.count = bn; blobs.instanceMatrix.needsUpdate = true
       for (const p of puffs) {
         if (!p.sp.visible) continue

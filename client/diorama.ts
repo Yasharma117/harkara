@@ -437,7 +437,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
         }
       }
       shadows.count = sh; shadows.instanceMatrix.needsUpdate = true
-      army?.update(shown, s.t, dt)
+      army?.update(shown, s.t, dt, s.couriers)
       discs.count = dn; discs.instanceMatrix.needsUpdate = true; if (discs.instanceColor) discs.instanceColor.needsUpdate = true
       roundel.mesh.count = rn; roundel.mesh.instanceMatrix.needsUpdate = true
       barBg.count = barFg.count = rn; barBg.instanceMatrix.needsUpdate = barFg.instanceMatrix.needsUpdate = true; if (barFg.instanceColor) barFg.instanceColor.needsUpdate = true
@@ -449,7 +449,8 @@ export async function createDiorama(host: HTMLElement, init: any) {
       s.couriers.slice(0, 80).forEach((c, i) => {
         const prev = lastX.get(c.id) ?? c.x; lastX.set(c.id, c.x)
         const flip = c.x >= prev ? 1 : -1
-        place(h.mesh, i, c.x, c.y, SIZE.harkara * h.aspect * flip * (c.kind === 'report' ? 0.8 : 1), SIZE.harkara * (c.kind === 'report' ? 0.8 : 1), yaw, -0.15 * flip, Math.abs(Math.sin(time * 14 + i)) * 2)
+        const hs = army && i < army.runners ? 0 : SIZE.harkara * (c.kind === 'report' ? 0.8 : 1) // a 3D runner stands in for the cut-out
+        place(h.mesh, i, c.x, c.y, hs * h.aspect * flip, hs, yaw, -0.15 * flip, Math.abs(Math.sin(time * 14 + i)) * 2)
         const col = HOUSE[c.house]; h.tint.setXYZ(i, col.r, col.g, col.b)
         if (dust) place(dust.mesh, i, c.x - flip * 10, c.y + 1, 16 * dust.aspect * flip * (0.8 + 0.3 * Math.abs(Math.sin(time * 5 + i))), 16, yaw)
         if (c.kind === 'report') return
