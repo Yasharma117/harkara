@@ -56,7 +56,7 @@ group('views', [['Map', 'map'], ['Diorama', 'diorama']], async v => {
   if (v === 'map') resize()
 }, view)
 if (params.get('view') === 'diorama') ($('views').lastElementChild as HTMLButtonElement).click()
-group('speeds', [['2×', 2], ['4×', 4], ['8×', 8], ['32×', 32]], v => (speed = v), speed)
+group('speeds', [['2×', 2], ['4×', 4], ['8×', 8]], v => (speed = v), speed)
 group('beliefs', [['Truth', null], ...HOUSES.map(h => [h[0].toUpperCase() + h.slice(1), h] as [string, string])], v => { beliefOf = v }, null)
 $('beliefs').addEventListener('click', e => { if (e.isTrusted) autoBelief = false }) // the viewer's own choice wins over the director's
 const scrub = $('scrub') as HTMLInputElement

@@ -15,7 +15,7 @@ const GAP: Record<Kind, number> = { inf: 13, arch: 13, cav: 22, ele: 40 }
 const HEIGHT = { foot: 26, horse: 28, rider: 21, ele: 52 }
 const MELEE = ['1H_Melee_Attack_Chop', '1H_Melee_Attack_Slice_Diagonal', '1H_Melee_Attack_Stab', '1H_Melee_Attack_Slice_Horizontal', 'Block_Attack']
 
-interface Fig { root: THREE.Object3D; mixer: THREE.AnimationMixer; acts: Map<string, THREE.AnimationAction>; cur: string; dead: boolean; x: number; y: number; yaw: number; diedAt: number; hitUntil: number }
+interface Fig { root: THREE.Object3D; mixer: THREE.AnimationMixer; acts: Map<string, THREE.AnimationAction>; cur: string; dead: boolean; x: number; y: number; yaw: number; diedAt: number; row: number; placed: boolean }
 type Mode = 'walk' | 'run' | 'fight' | 'shoot' | 'idle'
 interface Unit { kind: Kind; house: string; figs: Fig[]; lx: number; ly: number; yaw: number; shotAt: number; seen: boolean; spd: number; mode: Mode; next: Mode; nextAt: number; fightAt: number }
 
@@ -77,7 +77,7 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
     const mixer = new THREE.AnimationMixer(root), acts = new Map<string, THREE.AnimationAction>()
     for (const clip of src.animations) acts.set(clip.name.replace(prefix, ''), mixer.clipAction(clip))
     scene.add(holder)
-    return { root: holder, mixer, acts, cur: '', dead: false, x: 0, y: 0, yaw: 0, diedAt: 0, hitUntil: 0 }
+    return { root: holder, mixer, acts, cur: '', dead: false, x: 0, y: 0, yaw: 0, diedAt: 0, row: 0, placed: false }
   }
 
   const units = new Map<string, Unit>()
@@ -113,8 +113,8 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
   }
 
   // crossbow bolts in flight
-  const BOLTS = 60
-  const bolts = Array.from({ length: BOLTS }, () => { const o = bolt.scene.clone(); o.scale.setScalar(fit(bolt.scene, 1).k * 3); o.visible = false; scene.add(o); return { o, from: new THREE.Vector3(), to: new THREE.Vector3(), t0: 0, dur: 0 } })
+  const BOLTS = 160
+  const bolts = Array.from({ length: BOLTS }, () => { const o = bolt.scene.clone(); o.scale.setScalar(fit(bolt.scene, 1).k * 11); o.visible = false; scene.add(o); return { o, from: new THREE.Vector3(), to: new THREE.Vector3(), t0: 0, dur: 0 } })
   let boltN = 0, clock = 0
   const fire = (from: THREE.Vector3, to: THREE.Vector3) => {
     const b = bolts[boltN++ % BOLTS]
@@ -148,6 +148,9 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
       const adt = live ? dt : 0
       clock += adt
       let bn = 0
+      // each squad's nearest enemy as drawn: who it faces, fights or shoots at
+      const near = new Map<string, { foe: Sq; fd: number }>()
+      for (const q of shown) { if (q.flags & 2) continue; let foe: Sq | null = null, fd = Infinity; for (const e of shown) if (e.house !== q.house && !(e.flags & 2)) { const d = Math.hypot(e.x - q.x, e.y - q.y); if (d < fd) { fd = d; foe = e } } if (foe) near.set(q.id, { foe, fd }) }
       for (const q of shown) {
         const u = units.get(q.id)
         if (!u) continue
@@ -157,52 +160,89 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
         if (adt > 0) u.spd = u.spd * 0.85 + (Math.hypot(dx, dy) / adt) * 0.15 // smoothed: frame jitter must not flip march/halt
         const speed = u.spd, moving = speed > 6, routed = !!(q.flags & 1)
         // the nearest enemy as drawn: who they face, fight or shoot at
-        let foe: Sq | null = null, fd = Infinity
-        for (const e of shown) if (e.house !== q.house && !(e.flags & 2)) { const d = Math.hypot(e.x - q.x, e.y - q.y); if (d < fd) { fd = d; foe = e } }
+        const foe = near.get(q.id)?.foe ?? null, fd = near.get(q.id)?.fd ?? Infinity
         const fighting = !moving && !routed && u.kind !== 'arch' && fd < 150, shooting = !routed && u.kind === 'arch' && fd < 340 && !moving
         // a squad changes what it's doing only once the new state has held for a moment, so ranks never stutter between poses
         const raw: Mode = routed || speed > (u.kind === 'cav' ? 45 : 30) ? 'run' : moving ? 'walk' : fighting ? 'fight' : shooting ? 'shoot' : 'idle'
         if (raw !== u.next) { u.next = raw; u.nextAt = clock }
         if (u.next !== u.mode && (clock - u.nextAt > 0.4 || !u.seen)) { if (u.next === 'fight' && u.seen) u.fightAt = clock; u.mode = u.next }
-        const charging = u.mode === 'fight' && clock - u.fightAt < 1.3 // the first moments of contact: the line runs in
         const mode = u.mode
         const want = moving ? Math.atan2(dx, dy) : foe && fd < 400 ? Math.atan2(foe.x - q.x, foe.y - q.y) : u.yaw
         let dyaw = ((want - u.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI
         u.yaw += dyaw * Math.min(1, adt * 4)
         const cos = Math.cos(u.yaw), sin = Math.sin(u.yaw), cols = COLS[u.kind], gap = GAP[u.kind] * (routed ? 1.8 : 1)
-        u.figs.forEach((f, i) => {
-          if (i >= alive) {
-            if (!f.dead && u.seen) { f.dead = true; f.diedAt = clock; play(f, QUAD(u.kind) ? 'Death' : Math.random() < 0.5 ? 'Death_A' : 'Death_B', true, 0.1) } // the body stays where he fell
-            if (!u.seen) f.root.visible = false
-            // the fallen lie a few seconds, then sink into the grass, so fords don't fill with bodies
-            const age = clock - f.diedAt
-            if (f.dead && age > 12) { f.root.visible = age < 14.5; f.root.position.y = W(f.x, f.y, 0).y - (age - 12) * 6 }
-          } else {
-            if (f.dead) { f.dead = false; f.cur = '' } // rallied
-            f.root.visible = true
-            const gx = ((i % cols) - (cols - 1) / 2) * gap, gy = (Math.floor(i / cols) - (Math.ceil(PER[u.kind] / cols) - 1) / 2) * gap
-            const jx = ((i * 37) % 7) - 3, jy = ((i * 53) % 5) - 2
-            f.x = q.x + gx * cos + gy * sin + jx; f.y = q.y - gx * sin + gy * cos + jy; f.yaw = u.yaw
-            // in a fight the block presses forward into contact, front ranks surging and falling back
-            if (mode === 'fight' && foe) { const k = Math.min(45, Math.max(0, fd - 55) * 0.5) * (charging ? 0.4 + (clock - u.fightAt) / 2.2 : 1) + Math.sin(clock * 3 + i) * 4; f.x += Math.sin(u.yaw) * k; f.y += Math.cos(u.yaw) * k }
-            if (mode === 'fight' && clock > f.hitUntil + 1.2 && Math.random() < adt * 0.5) f.hitUntil = clock + 0.6 // takes a blow now and then
-            const ts = moving ? THREE.MathUtils.clamp(speed / (u.kind === 'cav' ? 60 : 22), 0.6, 2.6) : 1
-            if (QUAD(u.kind)) play(f, mode === 'run' || charging ? 'Gallop' : mode === 'walk' ? 'Walk' : mode === 'fight' ? (i % 2 ? 'Attack_Kick' : 'Attack_Headbutt') : 'Idle')
-            else play(f, mode === 'run' || (charging && u.kind === 'inf') ? 'Running_A' : mode === 'walk' ? 'Walking_A' : mode === 'fight' ? (clock < f.hitUntil ? (i % 2 ? 'Hit_A' : 'Block_Hit') : MELEE[i % MELEE.length]) : mode === 'shoot' ? '2H_Ranged_Shooting' : u.kind === 'arch' ? '2H_Ranged_Aiming' : 'Idle')
-            f.mixer.timeScale = ts
+        // ---- who is standing. Men fall where the fighting is: the front rank dies first, and the rank behind steps up.
+        const standing = u.figs.filter(f => !f.dead)
+        if (!u.seen) { u.figs.forEach((f, k) => { if (k >= alive) { f.dead = true; f.diedAt = -99; f.root.visible = false } }) }
+        else if (standing.length > alive) {
+          const order = mode === 'fight' ? [...standing].sort((a, b) => a.row - b.row) : [...standing].reverse()
+          for (const f of order.slice(0, standing.length - alive)) { f.dead = true; f.diedAt = clock; play(f, QUAD(u.kind) ? 'Death' : Math.random() < 0.5 ? 'Death_A' : 'Death_B', true, 0.1) }
+        } else if (standing.length < alive) {
+          for (const f of u.figs.filter(f => f.dead).slice(0, alive - standing.length)) { f.dead = false; f.cur = ''; f.placed = false } // rallied
+        }
+        // ---- the battle line: two squads in a fight meet halfway, front ranks a sword's reach apart, each man facing his opposite
+        let line: { mx: number; my: number; dx: number; dy: number; side: boolean; flank: number } | null = null
+        if (mode === 'fight' && foe) {
+          const fu = units.get(foe.id), mutual = near.get(foe.id)?.foe.id === q.id && fu?.mode === 'fight'
+          if (mutual) line = { mx: (q.x + foe.x) / 2, my: (q.y + foe.y) / 2, dx: (foe.x - q.x) / (fd || 1), dy: (foe.y - q.y) / (fd || 1), side: q.id < foe.id, flank: 0 }
+          else {
+            // the enemy is busy with someone else (or only shooting): fall on him where his men actually stand
+            const men = fu?.figs.filter(f => !f.dead && f.placed) ?? [], cx = men.length ? men.reduce((a, f) => a + f.x, 0) / men.length : foe.x, cy = men.length ? men.reduce((a, f) => a + f.y, 0) / men.length : foe.y
+            const d = Math.hypot(cx - q.x, cy - q.y) || 1
+            line = { mx: cx, my: cy, dx: (cx - q.x) / d, dy: (cy - q.y) / d, side: true, flank: 16 }
           }
-          if (!(f.dead && clock - f.diedAt > 12)) f.root.position.copy(W(f.x, f.y, 0))
-          f.root.rotation.y = f.yaw
+        }
+        const reach = u.kind === 'ele' ? 34 : u.kind === 'cav' ? 20 : 8.5
+        let slot = 0
+        for (const f of u.figs) {
+          if (f.dead) {
+            // the fallen lie a while where they fell, then sink into the grass, so fords don't fill with bodies
+            const age = clock - f.diedAt
+            if (age > 12) { f.root.visible = age < 14.5; f.root.position.y = W(f.x, f.y, 0).y - (age - 12) * 6 } else if (f.root.visible) f.root.position.copy(W(f.x, f.y, 0))
+            f.mixer.update(adt)
+            if (f.root.visible) { const r = u.kind === 'ele' ? 44 : u.kind === 'cav' ? 26 : 13; P.copy(W(f.x, f.y, 0.7)); S.set(r * 1.5, r * 0.8, 1); M.compose(P, Q, S); blobs.setMatrixAt(bn++, M) }
+            continue
+          }
+          const k = slot++, col = k % cols, row = Math.floor(k / cols), lat = (col - (cols - 1) / 2) * gap
+          f.row = row; f.root.visible = true
+          let tx: number, ty: number, face = u.yaw
+          if (line) {
+            const back = line.flank + reach / 2 + row * gap * 0.85 + (row ? 3 : Math.sin(clock * 2.3 + k) * 1.2)
+            tx = line.mx - line.dx * back - line.dy * lat; ty = line.my - line.dy * back + line.dx * lat; face = Math.atan2(line.dx, line.dy)
+          } else {
+            const gy = (row - (Math.ceil(PER[u.kind] / cols) - 1) / 2) * gap, jx = ((k * 37) % 7) - 3 + (routed ? ((k * 71) % 23) - 11 : 0), jy = ((k * 53) % 5) - 2 + (routed ? ((k * 43) % 19) - 9 : 0)
+            tx = q.x + lat * cos + gy * sin + jx; ty = q.y - lat * sin + gy * cos + jy
+          }
+          // each man walks or runs to his place; he is never teleported, so a charge is men crossing ground
+          const ddx = tx - f.x, ddy = ty - f.y, dist = Math.hypot(ddx, ddy), step = (speed + (QUAD(u.kind) ? 90 : 60)) * adt
+          let running = false
+          if (!f.placed || dist > 400) { f.x = tx; f.y = ty; f.placed = true }
+          else if (dist <= step || dist < 0.5) { f.x = tx; f.y = ty }
+          else { f.x += (ddx / dist) * step; f.y += (ddy / dist) * step; running = dist > 4; if (running) face = Math.atan2(ddx, ddy) }
+          f.yaw = face
+          let anim: string
+          if (running && !moving) anim = QUAD(u.kind) ? 'Gallop' : 'Running_A' // closing with the enemy, or stepping up into a gap
+          else if (mode === 'run') anim = QUAD(u.kind) ? 'Gallop' : 'Running_A'
+          else if (mode === 'walk') anim = QUAD(u.kind) ? 'Walk' : 'Walking_A'
+          else if (line) {
+            // front rank: strike and answer in turn with the man opposite; ranks behind wait their turn
+            const pair = line.side ? col : cols - 1 - col, mine = (Math.floor(clock / 1.15) + pair) % 2 === (line.side ? 0 : 1)
+            if (row > 0) anim = QUAD(u.kind) ? 'Idle' : row === 1 ? 'Blocking' : 'Idle'
+            else if (QUAD(u.kind)) anim = mine ? (col % 2 ? 'Attack_Kick' : 'Attack_Headbutt') : 'Idle_HitReact_Left'
+            else anim = mine ? MELEE[(k + Math.floor(clock / 1.15)) % MELEE.length] : (pair % 2 ? 'Block_Hit' : 'Hit_A')
+          } else anim = mode === 'shoot' ? '2H_Ranged_Shooting' : u.kind === 'arch' ? '2H_Ranged_Aiming' : 'Idle'
+          play(f, anim)
+          f.mixer.timeScale = moving ? THREE.MathUtils.clamp(speed / (u.kind === 'cav' ? 60 : 22), 0.6, 2.6) : 1
+          f.root.position.copy(W(f.x, f.y, 0)); f.root.rotation.y = f.yaw
           f.mixer.update(adt)
-          if (f.root.visible) { const r = u.kind === 'ele' ? 44 : u.kind === 'cav' ? 26 : 13; P.copy(W(f.x, f.y, 0.7)); S.set(r * (f.dead ? 1.5 : 1), r * 0.8, 1); M.compose(P, Q, S); blobs.setMatrixAt(bn++, M) }
-        })
+          { const r = u.kind === 'ele' ? 44 : u.kind === 'cav' ? 26 : 13; P.copy(W(f.x, f.y, 0.7)); S.set(r, r * 0.8, 1); M.compose(P, Q, S); blobs.setMatrixAt(bn++, M) }
+          if (line && row === 0 && Math.random() < adt * 0.6) puff(f.x + line.dx * 5, f.y + line.dy * 5)
+        }
         u.seen = true
-        if (mode === 'fight' && Math.random() < adt * 5) { const f = u.figs[Math.floor(Math.random() * alive)]; if (f && !f.dead) puff(f.x + (Math.random() - 0.5) * 20, f.y + (Math.random() - 0.5) * 14) }
         // archers loose bolts at the enemy they face
-        if (mode === 'shoot' && foe && clock - u.shotAt > 0.22) {
+        if (mode === 'shoot' && foe && clock - u.shotAt > 1.7) { // a volley: the whole line looses together
           u.shotAt = clock
-          const f = u.figs[Math.floor(Math.random() * alive)]
-          if (f && !f.dead) fire(W(f.x, f.y, 20), W(foe.x + (Math.random() - 0.5) * 40, foe.y + (Math.random() - 0.5) * 30, 6))
+          for (const f of u.figs) if (!f.dead && Math.random() < 0.8) fire(W(f.x, f.y, 20), W(foe.x + (Math.random() - 0.5) * 60, foe.y + (Math.random() - 0.5) * 40, 6))
         }
       }
       runners.forEach((r, i) => {
