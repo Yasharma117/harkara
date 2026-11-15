@@ -26,7 +26,8 @@ let end: any = null
 
 // ---- controls
 let t = Number(hashT ?? params.get('t') ?? 0), playing = !hashT, speed = 4, beliefOf: string | null = null
-for (const b of index) $('battle').append(new Option(b.id, b.id, false, b.id === id)) // no winner here: it would spoil Predict
+const battleName = (b: string) => { const g = b.match(/^grey-(\d+)$/), l = b.match(/^(daily|ladder)-\d{4}-(\d{2})-(\d{2})(?:-(\d+))?$/); return g ? `Rehearsal ${g[1]}` : l ? `${l[1] === 'ladder' ? 'Ladder' : 'Daily'} · ${Number(l[3])}/${Number(l[2])}${l[4] ? ` · ${l[4]}` : ''}` : b }
+for (const b of index) $('battle').append(new Option(battleName(b.id), b.id, false, b.id === id)) // no winner here: it would spoil Predict
 $('battle').onchange = e => { location.hash = (e.target as HTMLSelectElement).value; location.reload() }
 const playBtn = $('play')
 let busyIntro = false, autoBelief = false
@@ -115,7 +116,7 @@ vo = await voice(id, init.houses, COLOR, h => A(`portrait-${h}`), $('stage'))
 $('ladder-open').before(vo.button)
 const sfx = soundscape(); sfx.set(vo.on); vo.onToggle(v => sfx.set(v))
 if (params.get('ladder') !== null || location.hash === '#ladder') lad.open()
-$('houses').innerHTML = init.houses.map((h: any) => `<div class="house" data-h="${h.id}" tabindex="0" style="--c:${COLOR[h.id]}">${A(`portrait-${h.id}`) ? `<img class="portrait" src="${A(`portrait-${h.id}`)}" alt="">` : ''}<div><div class="hname">${emblem(h.id)}<b>${h.name}</b><small>${h.id} · ${h.model === 'scripted' ? 'test general' : h.model.split(' → ')[0].split('/').pop()}</small></div><i>“${h.line}”</i></div></div>`).join('')
+$('houses').innerHTML = init.houses.map((h: any) => `<div class="house" data-h="${h.id}" tabindex="0" style="--c:${COLOR[h.id]}">${A(`portrait-${h.id}`) ? `<img class="portrait" src="${A(`portrait-${h.id}`)}" alt="">` : ''}<div><div class="hname">${emblem(h.id)}<b>${h.name}</b><small>${h.id} · ${h.model === 'scripted' ? 'rehearsal general' : h.model.split(' → ')[0].split('/').pop()}</small></div><i>“${h.line}”</i></div></div>`).join('')
 
 // ---- streaming load: playback starts after watch 1
 ;(async () => {
@@ -128,6 +129,8 @@ $('houses').innerHTML = init.houses.map((h: any) => `<div class="house" data-h="
     addMarks(wf.events)
   }
   end = await get('end.json')
+  // smoke rises at the sender's camp and a truce letter lands at the receiver's: give those moments a place, so the camera can go there
+  for (const e of events) if (e.type === 'smoke' || e.type === 'truce') { const n = nodes.get(`${e.type === 'smoke' ? e.house : e.b}-camp`); if (n) { e.x = n.x; e.y = n.y } }
   tale = story(events, letters, COLOR, $('stage'), init.houses.every((h: any) => h.model === 'scripted'), h => {
     if (h && !beliefOf) { fordNote.innerHTML = `Now showing the field as <b style="color:${COLOR[h]}">${cap(h)}</b> believes it is. Ghosts mark where it thinks armies are.`; fordNote.classList.add('on'); clearTimeout(fordNoteT); fordNoteT = window.setTimeout(() => fordNote.classList.remove('on'), 5000); autoBelief = true; ($(`beliefs`).querySelector(`[data-v="${h}"]`) as HTMLElement | null)?.click(); setTimeout(() => { if (autoBelief) { autoBelief = false; ($(`beliefs`).firstElementChild as HTMLElement)?.click() } }, 5000) }
   }, (x, y) => { shot = { x, y, from: t, until: t + 720, r: 430 } }) // the camera goes where the caption points
@@ -232,11 +235,8 @@ function draw() {
   if (view === 'diorama' && dio) {
     const cbm = new Map(b.c.map(c => [c[0], c]))
     const flashes: { type: string; x: number; y: number; age: number }[] = []
-    for (let i = events.length - 1; i >= 0 && events[i].t > t - 120; i--) { const e = events[i]; if (e.t <= t && ['caught', 'killed', 'lost', 'clash'].includes(e.type) && !(e.type === 'clash' && flashes.some(f => Math.hypot(f.x - e.x, f.y - e.y) < 60))) flashes.push({ type: e.type, x: e.x, y: e.y, age: (t - e.t) / 120 }) }
-    // the latest catch or shot keeps a ring until the next one (within a watch), so a cold viewer can find it
-    // armies of two houses in contact always show a clash ring, even between clash events
-    pos.forEach((p, i) => { if (p.flags & 2) return; for (let j = i + 1; j < pos.length; j++) { const q = pos[j]; if (q.flags & 2 || squadInfo[i].house === squadInfo[j].house || Math.hypot(p.x - q.x, p.y - q.y) > 55) continue; const x = (p.x + q.x) / 2, y = (p.y + q.y) / 2; if (!flashes.some(f => Math.hypot(f.x - x, f.y - y) < 60)) flashes.push({ type: 'clash', x, y, age: 0.3 }) } })
-    if (!flashes.some(f => f.type === 'caught' || f.type === 'killed')) for (let i = events.length - 1; i >= 0 && events[i].t > t - TPW; i--) { const e = events[i]; if (e.t <= t && (e.type === 'caught' || e.type === 'killed')) { flashes.push({ type: e.type, x: e.x, y: e.y, age: 0.45 }); break } }
+    // a stamp where a rider carrying an order or a letter was caught, shot or lost (a scouting report caught is routine): one per place
+    for (let i = events.length - 1; i >= 0 && events[i].t > t - 200; i--) { const e = events[i]; if (e.t <= t && ['caught', 'killed', 'lost'].includes(e.type) && letters.get(e.letter)?.kind !== 'report' && !flashes.some(f => Math.hypot(f.x - e.x, f.y - e.y) < 90)) flashes.push({ type: e.type, x: e.x, y: e.y, age: (t - e.t) / 200 }) }
     dio.render({
       t,
       squads: squadInfo.map((s, i) => ({ ...s, ...pos[i] })),
@@ -308,7 +308,7 @@ function draw() {
 }
 
 // ---- camera director: look ahead ~9 game seconds, pick the best moment, hold it until just after it happens
-const SCORE: Record<string, number> = { standard: 10, killed: 8, caught: 8, clash: 3 } // decodes and truces happen in camp; their letter cards tell them, the camera stays on the field
+const SCORE: Record<string, number> = { standard: 10, clash: 7, killed: 6, caught: 6 } // the fighting is the show now; riders next // decodes and truces happen in camp; their letter cards tell them, the camera stays on the field
 let shot: { x: number; y: number; from: number; until: number; r?: number } | null = null
 // how close the camera pushes in for each kind of moment: a capture or a broken cipher is personal, a clash is wide
 const LENS: Record<string, number> = { standard: 380, caught: 420, killed: 430, decode: 420, truce: 480, clash: 440 } // close: the soldiers' animation is the show
@@ -332,7 +332,8 @@ function director(tt: number, pos: { x: number; y: number; flags: number }[]) {
     if (e.t > tt + 240) break
     let sc = SCORE[e.type]
     if (!sc || (e.type === 'decode' && !e.readable)) continue
-    if ((e.type === 'caught' || e.type === 'killed') && letters.get(e.letter)?.kind === 'report') sc = 4
+    if (e.type === 'clash' && (e.a.includes('arch') || e.b.includes('arch'))) sc = 4 // archers skirmishing is not a battle line
+    if ((e.type === 'caught' || e.type === 'killed') && letters.get(e.letter)?.kind === 'report') sc = 0
     const at = e.x != null ? e : nodes.get(`${e.type === 'truce' ? e.a : e.house}-camp`)
     if (at && context(at, pos) && (!best || sc > best.s)) best = { x: at.x, y: at.y, s: sc, t: e.t, type: e.type }
   }
@@ -437,7 +438,7 @@ function predict() {
   for (const p of done) { if (!p.right) break; streak++ }
   const cap = (h: string) => h[0].toUpperCase() + h.slice(1)
   $('predict').innerHTML = !mine
-    ? t < 6 * TPW ? `<b>Who wins?</b> <small>Pick to start, or press Play.</small><br>${HOUSES.map(h => `<button data-h="${h}">${cap(h)}</button>`).join('')}` : '<small>Predictions closed after watch 6.</small>'
+    ? t < 6 * TPW ? `<b>Who wins?</b> <small>Pick any time before watch 6.</small><br>${HOUSES.map(h => `<button data-h="${h}">${cap(h)}</button>`).join('')}` : '<small>Predictions closed after watch 6.</small>'
     : mine.right === undefined ? `Your pick: <b>${cap(mine.pick)}</b>`
     : `You picked <b>${cap(mine.pick)}</b>: ${mine.right ? 'right' : 'wrong'}. Streak: <b>${streak}</b>`
 }
@@ -548,7 +549,7 @@ function fordStrip(pos: { x: number; y: number; flags: number; str: number }[]) 
 // ---- the ending: who won, why, and what each general's mail cost it
 const cap = (h: string) => h[0].toUpperCase() + h.slice(1)
 const endCard = document.createElement('div'); endCard.id = 'endcard'; endCard.hidden = true; $('stage').append(endCard)
-endCard.onclick = () => (endCard.hidden = true)
+endCard.onclick = e => { const a = (e.target as HTMLElement).dataset.a; if (a === 'again') { t = 0; endShown = false; setPlaying(true) } if (a === 'next') { location.hash = index[(index.findIndex(b => b.id === id) + 1) % index.length].id; location.reload() } endCard.hidden = true }
 let endShown = false
 function ending() {
   const fin = events.find(e => e.type === 'end')
@@ -570,6 +571,7 @@ function ending() {
     <table><tr><th></th><th>Score</th><th>Riders lost</th><th>Letters taken</th><th>Ciphers broken</th></tr>
     ${rows.map(h => `<tr><td><b style="color:${COLOR[h]}">${cap(h)}</b></td><td>${end.scores[h]}</td><td>${per(h, 'caught', 'house') + per(h, 'killed', 'house')}</td><td>${per(h, 'caught', 'by')}</td><td>${new Set(events.filter(e => e.type === 'decode' && e.readable && e.house === h).map(e => e.letter)).size}</td></tr>`).join('')}</table>
     <p>${(() => { const w = fin.winner, lost = per(w, 'caught', 'house') + per(w, 'killed', 'house'), took = per(w, 'caught', 'by'), most = HOUSES.reduce((a, b) => (per(b, 'caught', 'by') > per(a, 'caught', 'by') ? b : a)); return `${cap(w)} kept ${end.scores[w] - Object.values(end.fords as Record<string, string | null>).filter(x => x === w).length * 100} soldiers' worth of strength alive${took ? ` and took ${took} enemy letters` : ''}, losing ${lost} riders of its own.${most !== w ? ` ${cap(most)} read the most enemy mail but could not turn it into ground.` : ''}` })()}</p>
+    <p class="ec-btns"><button data-a="again">Watch again</button>${index.length > 1 ? '<button data-a="next">Next battle</button>' : ''}</p>
     <p class="ec-hint">Open the Mailbag to read every letter, or scrub back to any moment.</p></div>`
   endCard.hidden = false
 }

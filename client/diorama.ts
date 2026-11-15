@@ -339,7 +339,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
   })
   function steer(s: Snap, dt: number) {
     const now = performance.now(), idle = now - userAt > 20000
-    let label = idle ? 'Camera: director' : `Camera: yours (director back in ${Math.ceil((20000 - (now - userAt)) / 1000)} s)`
+    let label = idle ? 'Auto camera · drag to look around' : `Camera: yours (director back in ${Math.ceil((20000 - (now - userAt)) / 1000)} s)`
     const c = follow && s.couriers.find(c => c.id === follow!.id)
     if (follow) {
       if (c) { follow.seen = true; follow.goneAt = 0 } else if (follow.seen && !follow.goneAt) follow.goneAt = now
