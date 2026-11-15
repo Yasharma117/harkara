@@ -231,7 +231,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
   const smoke = art['smoke-column'] ? await batch('smoke-column', none, 4, { tinted: false, opacity: 0.85 }) : null
   // ghosts: the same sprites, faded and greyed, one per squad, with a dotted ink line to the truth
   const ghostB: Record<string, Awaited<ReturnType<typeof batch>>> = {}
-  for (const k of ['inf', 'arch', 'cav', 'ele']) ghostB[k] = await batch('', SPRITES[k][1], init.squads.length, { tinted: true, opacity: 0.45 }, units[k].t)
+  for (const k of ['inf', 'arch', 'cav', 'ele']) ghostB[k] = await batch('', SPRITES[k][1], init.squads.length, { tinted: true, opacity: 0.7 }, units[k].t)
   for (const k in ghostB) ghostB[k].aspect = units[k].aspect
   const dots = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicNodeMaterial({ color: '#1e1c1a', transparent: true, opacity: 0.55 }))
   dots.frustumCulled = false; scene.add(dots)
@@ -449,7 +449,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
         }
       }
       shadows.count = sh; shadows.instanceMatrix.needsUpdate = true
-      army?.update(shown, s.t, dt, s.couriers, s.flashes)
+      army?.update(shown, s.t, dt, s.couriers, s.flashes, camera.position.distanceTo(controls.target))
       discs.count = dn; discs.instanceMatrix.needsUpdate = true; if (discs.instanceColor) discs.instanceColor.needsUpdate = true
       roundel.mesh.count = rn; roundel.mesh.instanceMatrix.needsUpdate = true
       barBg.count = barFg.count = rn; barBg.instanceMatrix.needsUpdate = barFg.instanceMatrix.needsUpdate = true; if (barFg.instanceColor) barFg.instanceColor.needsUpdate = true
@@ -516,7 +516,10 @@ export async function createDiorama(host: HTMLElement, init: any) {
         if (f.type === 'clash') { let n = 0, sx = 0, sy = 0; s.squads.forEach((q, k) => { if (!(q.flags & 2) && drawn[k] && Math.hypot(q.x - f.x, q.y - f.y) < 60) { sx += drawn[k].x; sy += drawn[k].y; n++ } }); if (n) { fx = sx / n; fy = sy / n } } // a clash rings the middle of everyone in it
         r.position.copy(W(fx, fy, 2)); r.scale.setScalar(16 + f.age * 50)
         // every ring says what it marks
-        const tx = TAGTEX[f.type]; if (tx) { tag.visible = true; tag.material = tx.m; tag.position.copy(W(fx, fy, 72)); tag.scale.set(tx.w * 0.3, 36 * 0.3, 1) }
+        const tx = TAGTEX[f.type]; if (tx) { tag.visible = true; tag.material = tx.m; tag.position.copy(W(fx, fy, 72)); tag.scale.set(tx.w * 0.3, 36 * 0.3, 1)
+          // a stamp never sits half under the strip, the side panel or an open letter
+          P.copy(tag.position).project(camera); const px = (P.x + 1) / 2 * renderer.domElement.clientWidth, py = (1 - P.y) / 2 * renderer.domElement.clientHeight
+          if (py < 120 || px < 110 || px > renderer.domElement.clientWidth - panelPx - 110 || (px < 360 && py < 320 && document.querySelector('#letter.on'))) tag.visible = false }
         const m = r.material as THREE.MeshBasicNodeMaterial
         m.color.set(f.type === 'clash' ? '#efe3c4' : f.type === 'lost' ? '#ffffff' : '#e8321e'); m.opacity = (f.type === 'clash' && army ? 0.4 : 0.95) * (1 - f.age * 0.7) // with 3D fighting visible, contact rings only whisper
         ;((r.children[0] as THREE.Mesh).material as THREE.MeshBasicNodeMaterial).opacity = (f.type === 'clash' ? 0.15 : 0.7) * (1 - f.age * 0.7)
@@ -534,7 +537,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
         if (free) placed.push(free)
         P.copy(l.sp.position).project(camera)
         const px = (P.x + 1) / 2 * cw, py = (1 - P.y) / 2 * ch, hw = l.sp.scale.x / 2 * ch / (2 * Math.tan(camera.fov * Math.PI / 360) * camera.position.distanceTo(l.sp.position))
-        const inView = P.z < 1 && px - hw > 8 && px + hw < cw - panelPx - 8 && py > 24 && py < ch - 24
+        const inView = P.z < 1 && px - hw > 8 && px + hw < cw - panelPx - 8 && py > 70 && py < ch - 24 /* clear of the fords strip */
         l.sp.visible = !!free && inView
         if (l.tag) l.tag.visible = !free && inView
       }

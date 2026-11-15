@@ -162,7 +162,8 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
     runners: RUNNERS,
     // where a squad's standing men are (in a fight they leave the squad's spot for the battle line): its standard follows them
     centre(id: string) { const m = units.get(id)?.figs.filter(f => !f.dead && f.placed); return m?.length ? { x: m.reduce((a, f) => a + f.x, 0) / m.length, y: m.reduce((a, f) => a + f.y, 0) / m.length } : null },
-    update(shown: Sq[], t: number, dt: number, couriers: { house: string; kind: string; x: number; y: number; path: { x: number; y: number }[] }[] = [], stops: { type: string; x: number; y: number; house?: string }[] = []) {
+    update(shown: Sq[], t: number, dt: number, couriers: { house: string; kind: string; x: number; y: number; path: { x: number; y: number }[] }[] = [], stops: { type: string; x: number; y: number; house?: string }[] = [], camR = 500) {
+      const big = Math.min(2.4, Math.max(1, camR / 600)) // from the wide view a rider is still a figure, not a speck
       const live = t !== lastT; lastT = t // battle paused: everyone freezes mid-stride
       const adt = live ? dt : 0
       clock += adt
@@ -267,20 +268,20 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
       runners.forEach((r, i) => {
         const c = couriers[i]
         // the pool's tail end plays the riders who were just stopped: a caught rider stands held where he was taken, a shot one falls there
-        const st = c ? undefined : stops.filter(x => x.type !== 'lost' && x.house)[RUNNERS - 1 - i]
+        const st = c ? undefined : stops.filter(x => x.house)[RUNNERS - 1 - i]
         r.f.root.visible = !!(c || st); seals[i].visible = false
         if (st) {
           dress(r, st.house!); play(r.f, st.type === 'killed' ? 'Death_A' : 'Idle', st.type === 'killed', 0.1)
-          r.f.root.position.copy(W(st.x, st.y, 0)); r.f.root.scale.setScalar(1.5); r.f.mixer.timeScale = 1; r.f.mixer.update(adt)
-          seals[i].visible = true; seals[i].material = sealMat[st.house!]; seals[i].position.copy(W(st.x, st.y, st.type === 'killed' ? 22 : 52))
+          r.f.root.position.copy(W(st.x, st.y, 0)); r.f.root.scale.setScalar(1.5 * big); r.f.mixer.timeScale = 1; r.f.mixer.update(adt)
+          seals[i].visible = true; seals[i].material = sealMat[st.house!]; seals[i].position.copy(W(st.x, st.y, st.type === 'killed' ? 22 : 52 * big)); seals[i].scale.set(20 * big, 15 * big, 1)
           return
         }
         if (!c) return
         dress(r, c.house); play(r.f, 'Running_A')
         const to = c.path[0], order = c.kind !== 'report'
         if (to && Math.hypot(to.x - c.x, to.y - c.y) > 1) r.f.root.rotation.y = Math.atan2(to.x - c.x, to.y - c.y)
-        r.f.root.position.copy(W(c.x, c.y, 0)); r.f.root.scale.setScalar(order ? 1.5 : 0.8) // the riders carrying orders are the show: bigger than a soldier
-        if (order) { seals[i].visible = true; seals[i].material = sealMat[c.house]; seals[i].position.copy(W(c.x, c.y, 52 + Math.sin(clock * 5 + i) * 2)) }
+        r.f.root.position.copy(W(c.x, c.y, 0)); r.f.root.scale.setScalar(order ? 1.5 * big : 0.8) // the riders carrying orders are the show: bigger than a soldier
+        if (order) { seals[i].visible = true; seals[i].material = sealMat[c.house]; seals[i].position.copy(W(c.x, c.y, 52 * big + Math.sin(clock * 5 + i) * 2)); seals[i].scale.set(20 * big, 15 * big, 1) }
         r.f.mixer.timeScale = 1.6; r.f.mixer.update(adt)
         P.copy(W(c.x, c.y, 0.7)); S.set(12, 10, 1); M.compose(P, Q, S); blobs.setMatrixAt(bn++, M)
       })

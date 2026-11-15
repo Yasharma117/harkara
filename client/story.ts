@@ -78,7 +78,7 @@ export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<stri
         // the score moving is the plot: who has the most soldiers at a ford, and what that is worth
         const h = (x: string) => `<b style="color:${COLOR[x]}">${CAP(x)}</b>`, late = e.t > 27 * 300
         const what = e.now && e.was ? `${h(e.now)} takes the <b>${e.name} ford</b> from ${h(e.was)}: it now has more soldiers there. +100 to ${CAP(e.now)}, −100 to ${CAP(e.was)}.` : e.now ? `${h(e.now)} holds the <b>${e.name} ford</b>: +100 for as long as it has the most soldiers there.` : `${h(e.was)} loses the <b>${e.name} ford</b>: ${e.fight ? 'an enemy has matched its numbers there' : 'its soldiers have marched away'}. −100.`
-        cand.push({ t: e.t, seq: e.seq, r: e.decisive ? 9.5 : late ? 8.5 : 5.5, hold: 0, c: COLOR[e.house], x: e.x, y: e.y, html: e.decisive ? `<b>The turning point.</b> ${what} ${h(e.lead1)} moves ahead of ${h(e.lead0)}.` : what })
+        cand.push({ t: e.t, seq: e.seq, r: e.decisive ? 9.5 : late ? 8.5 : 5.5, hold: 0, c: COLOR[e.house], x: e.x, y: e.y, html: e.decisive ? `<b>The turning point.</b> ${what} ${h(e.lead1)} moves ahead of ${h(e.lead0)}.${e.order ? ` ${CAP(e.was)}'s general cannot see the field, and had ordered: “${e.order}.”` : ''}` : what })
         break
       }
       case 'truceend':
