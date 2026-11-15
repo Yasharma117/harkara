@@ -134,7 +134,7 @@ $('houses').innerHTML = init.houses.map((h: any) => `<div class="house" data-h="
   beats()
   tale = story(events, letters, COLOR, $('stage'), init.houses.every((h: any) => h.model === 'scripted'), h => {
     if (h && !beliefOf) { fordNote.innerHTML = `Now showing the field as <b style="color:${COLOR[h]}">${cap(h)}</b> believes it is. Ghosts mark where it thinks armies are.`; fordNote.classList.add('on'); clearTimeout(fordNoteT); fordNoteT = window.setTimeout(() => fordNote.classList.remove('on'), 5000); autoBelief = true; ($(`beliefs`).querySelector(`[data-v="${h}"]`) as HTMLElement | null)?.click(); setTimeout(() => { if (autoBelief) { autoBelief = false; ($(`beliefs`).firstElementChild as HTMLElement)?.click() } }, 5000) }
-  }, (x, y) => { shot = { x, y, from: t, until: t + 720, r: 430 } }) // the camera goes where the caption points
+  }, (x, y) => { if (!(shot?.pin && t < shot.until)) shot = { x, y, from: t, until: t + 720, r: 430 } }) // the camera goes where the caption points
 })()
 while (!watches.length) await new Promise(r => setTimeout(r, 20))
 
@@ -237,7 +237,7 @@ function draw() {
     const cbm = new Map(b.c.map(c => [c[0], c]))
     const flashes: { type: string; x: number; y: number; age: number; house: string }[] = []
     // a stamp where a rider carrying an order or a letter was caught, shot or lost (a scouting report caught is routine): one per place
-    for (let i = events.length - 1; i >= 0 && events[i].t > t - 200; i--) { const e = events[i]; if (e.t <= t && ['caught', 'killed', 'lost'].includes(e.type) && (e.type !== 'lost' || /mist/.test(e.why)) && letters.get(e.letter)?.kind !== 'report' && !flashes.some(f => Math.hypot(f.x - e.x, f.y - e.y) < 90)) flashes.push({ type: e.type, x: e.x, y: e.y, age: (t - e.t) / 200, house: e.house }) }
+    for (let i = events.length - 1; i >= 0 && events[i].t > t - 200; i--) { const e = events[i]; if (e.t <= t && ['caught', 'killed', 'lost'].includes(e.type) && (e.type !== 'lost' || /mist/.test(e.why)) && (e.type === 'killed' || letters.get(e.letter)?.kind !== 'report') && !flashes.some(f => Math.hypot(f.x - e.x, f.y - e.y) < 90)) flashes.push({ type: e.type, x: e.x, y: e.y, age: (t - e.t) / 200, house: e.house }) }
     dio.render({
       t,
       squads: squadInfo.map((s, i) => ({ ...s, ...pos[i] })),
@@ -311,7 +311,7 @@ function draw() {
 
 // ---- camera director: look ahead ~9 game seconds, pick the best moment, hold it until just after it happens
 const SCORE: Record<string, number> = { standard: 10, destroyed: 9, ford: 8, clash: 7, rout: 6, killed: 6, caught: 6 } // the fighting is the show now; riders next // decodes and truces happen in camp; their letter cards tell them, the camera stays on the field
-let shot: { x: number; y: number; from: number; until: number; r?: number } | null = null
+let shot: { x: number; y: number; from: number; until: number; r?: number; pin?: boolean } | null = null
 // how close the camera pushes in for each kind of moment: a capture or a broken cipher is personal, a clash is wide
 const LENS: Record<string, number> = { destroyed: 400, rout: 430, ford: 470, standard: 380, caught: 420, killed: 430, decode: 420, truce: 480, clash: 440 } // close: the soldiers' animation is the show
 // a shot needs context: two houses in frame, or one house at a named landmark (ford, ferry, camp, village)
@@ -322,12 +322,14 @@ function context(at: { x: number; y: number }, pos: { x: number; y: number; flag
 }
 // never frame empty ground: a shot settles halfway onto the soldiers around its target; with nobody there and no landmark, stay wide
 function aim(s: typeof shot, pos: { x: number; y: number; flags: number }[]) {
-  if (!s) return s
+  if (!s || s.pin) return s
   const near = pos.filter(p => !(p.flags & 2) && Math.hypot(p.x - s.x, p.y - s.y) < 200)
   if (!near.length) return LANDMARK.some((n: any) => /camp/.test(n.id) && Math.hypot(n.x - s.x, n.y - s.y) < 150) ? s : null // a camp has its tent and its smoke; anywhere else with nobody is empty ground
   return { ...s, x: (s.x + near.reduce((a, p) => a + p.x, 0) / near.length) / 2, y: (s.y + near.reduce((a, p) => a + p.y, 0) / near.length) / 2 }
 }
 function director(tt: number, pos: { x: number; y: number; flags: number }[]) {
+  // the turning point owns the camera: there before the soldiers leave, wide enough to watch them go, and nothing cuts away
+  if (turning && tt > turning.t - 240 && tt < turning.t + 500) return (shot = { x: turning.x, y: turning.y, from: turning.t - 240, until: turning.t + 500, r: 620, pin: true })
   // hold every shot at least ~5 s of play, so the camera settles; only a bigger moment may cut in early
   // the battle opens wide, and the camera pulls back to the whole valley for a breath after every story
   if (tt < 2 * TPW || (shot && tt >= Math.max(shot.until, shot.from + 720) && tt < Math.max(shot.until, shot.from + 720) + 260)) return null
@@ -392,7 +394,7 @@ function line(e: Ev): string | null {
     case 'rout': return `<div class="item" style="--c:#888">${W(e)} ${nice(e.squad)} break and run for their camp.</div>`
     case 'destroyed': return `<div class="item" style="--c:#000">${W(e)} ${nice(e.squad)} are wiped out.</div>`
     case 'standard': return `<div class="item big" style="--c:#000">${W(e)} <b>${name(e.by)} takes the ${e.house} standard!</b></div>`
-    case 'end': return `<div class="item big" style="--c:${COLOR[e.winner]}"><b>Battle over: ${e.reason}.</b>${end ? `<br><small>scores: ${Object.entries(end.scores).map(([h, s]) => `${h} ${s}`).join(' · ')}</small>` : ''}</div>`
+    case 'end': return `<div class="item big" style="--c:${COLOR[e.winner]}"><b>Battle over: ${cap(e.winner)} wins${/score/.test(e.reason) ? ' on points' : ''}.</b>${end ? `<br><small>${Object.entries(end.scores as Record<string, number>).sort((a, b) => b[1] - a[1]).map(([h, s]) => `${cap(h)} ${s}`).join(' · ')}</small>` : ''}</div>`
   }
   return null
 }
@@ -548,7 +550,7 @@ function beats() {
       const now = fordAt(id, pos)
       if (now.h === cur[i]) { since[i] = -1; return }
       if (since[i] < 0 || pend[i] !== now.h) { since[i] = k; pend[i] = now.h; return }
-      if (f.t - frames[since[i]].t < 90) return // a change must hold: men passing through a ford don't take it
+      if (f.t - frames[since[i]].t < 150) return // a change must hold: men passing through a ford don't take it
       const n = nodes.get(id), at = frames[since[i]]
       extra.push({ type: 'ford', t: at.t, ford: id, name: now.name, was: cur[i], now: now.h, fight: now.fight, house: now.h ?? cur[i], x: n.x, y: n.y, lead0: lead(frames[Math.max(0, since[i] - 1)]), lead1: lead(f) } as any)
       cur[i] = now.h; since[i] = -1
@@ -593,7 +595,7 @@ function fordStrip(pos: { x: number; y: number; flags: number; str: number }[]) 
   if (key === stripKey) return
   const fkey = JSON.stringify(held) + two
   if (fkey !== pendKey) { pendKey = fkey; pendAt = performance.now() }
-  if (!over && fkey !== shownF && performance.now() - pendAt < 900) return // a ford changing hands must hold a moment before it shows: no flicker
+  if (!over && fkey !== shownF && performance.now() - pendAt < 2500) return // a ford changing hands must hold a moment before it shows: no flicker
   if (shownF && fkey !== shownF && !over) {
     const prev = JSON.parse(shownF.slice(0, shownF.lastIndexOf(']') + 1) || '[]'); const ch = held.findIndex((f: any, i: number) => prev[i] && prev[i].h !== f.h)
     if (ch >= 0) {

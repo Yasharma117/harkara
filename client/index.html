@@ -35,6 +35,7 @@
   .house .why { position: absolute; left: 8px; bottom: 4px; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; background: var(--c); color: #fff; padding: 1px 7px; border-radius: 3px; opacity: 0; transition: opacity .3s; z-index: 3; } .house .why.on { opacity: 1; }
   @media (prefers-reduced-motion: reduce) { .house::after, .house.act, .house.act.big { animation: none; } }
   .house i { color: var(--muted); }
+  body:not(.intro) .house:not(:hover) div > i { display: none; } /* the mottos introduce the generals; once play starts the feed needs the room */
   .house .pact { position: absolute; right: 8px; bottom: 4px; font-size: 11px; background: #4e7a5a22; border: 1px solid #4e7a5a88; color: #2f5a3c; padding: 0 7px; border-radius: 3px; z-index: 3; }
   #endcard .ec-turn b:first-child { color: #d9b45a; }
   .hname { display: flex; gap: 6px; align-items: center; }

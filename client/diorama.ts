@@ -342,7 +342,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
   })
   function steer(s: Snap, dt: number) {
     const now = performance.now(), idle = now - userAt > 20000
-    let label = idle ? 'Auto camera · drag to look around' : `Camera: yours (director back in ${Math.ceil((20000 - (now - userAt)) / 1000)} s)`
+    let label = idle ? '' : `Camera: yours (director back in ${Math.ceil((20000 - (now - userAt)) / 1000)} s)`
     const c = follow && s.couriers.find(c => c.id === follow!.id)
     if (follow) {
       if (c) { follow.seen = true; follow.goneAt = 0 } else if (follow.seen && !follow.goneAt) follow.goneAt = now
@@ -387,7 +387,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
     follow(id: string | null) { follow = id ? { id, seen: false, goneAt: 0 } : null },
     render(s: Snap, time: number) {
       const dt = Math.min(0.1, time - (lastTime || time)); lastTime = time
-      status.textContent = steer(s, dt) ?? ''
+      status.textContent = steer(s, dt) ?? ''; status.style.display = status.textContent ? '' : 'none'
       controls.update()
       const yaw = Math.atan2(camera.position.x - controls.target.x, camera.position.z - controls.target.z)
       // soldiers in loose 3×3 blocks, fewer as the squad loses strength
