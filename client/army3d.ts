@@ -145,6 +145,16 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
   let courierMat: THREE.MeshStandardMaterial | null = null
   courier.scene.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) courierMat ??= m.material as THREE.MeshStandardMaterial })
   const runners = Array.from({ length: RUNNERS }, () => { const f = make(courier, courierFit, 'rhino'); f.root.visible = false; play(f, 'Running_A'); return { f, house: 'rhino' } })
+  const dress = (r: typeof runners[0], house: string) => { if (r.house !== house) { r.house = house; r.f.root.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) m.material = houseMat(courierMat!, house, 0.14) }) } }
+  // a sealed letter floats over every rider carrying an order or a letter, edged in the sender's colour: the thing everyone is hunting
+  const sealTex = (house: string) => { const c = document.createElement('canvas'); c.width = 96; c.height = 72; const g = c.getContext('2d')!
+    g.lineJoin = 'round'; g.fillStyle = '#f6ecd6'; g.strokeStyle = '#' + HOUSE[house].getHexString(THREE.SRGBColorSpace); g.lineWidth = 9
+    g.beginPath(); g.roundRect(6, 8, 84, 56, 6); g.fill(); g.stroke()
+    g.strokeStyle = '#2a2016'; g.lineWidth = 3; g.beginPath(); g.moveTo(10, 12); g.lineTo(48, 40); g.lineTo(86, 12); g.stroke()
+    g.fillStyle = '#b3242f'; g.beginPath(); g.arc(48, 42, 9, 0, 7); g.fill()
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return new THREE.SpriteNodeMaterial({ map: t, transparent: true, depthWrite: false, depthTest: false }) }
+  const sealMat: Record<string, THREE.SpriteNodeMaterial> = Object.fromEntries(Object.keys(HOUSE).map(h => [h, sealTex(h)]))
+  const seals = runners.map(() => { const sp = new THREE.Sprite(); sp.visible = false; sp.renderOrder = 8; sp.scale.set(20, 15, 1); scene.add(sp); return sp })
   let lastT = -1
 
   ;(globalThis as any).__army = units // test hook
@@ -152,7 +162,7 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
     runners: RUNNERS,
     // where a squad's standing men are (in a fight they leave the squad's spot for the battle line): its standard follows them
     centre(id: string) { const m = units.get(id)?.figs.filter(f => !f.dead && f.placed); return m?.length ? { x: m.reduce((a, f) => a + f.x, 0) / m.length, y: m.reduce((a, f) => a + f.y, 0) / m.length } : null },
-    update(shown: Sq[], t: number, dt: number, couriers: { house: string; kind: string; x: number; y: number; path: { x: number; y: number }[] }[] = []) {
+    update(shown: Sq[], t: number, dt: number, couriers: { house: string; kind: string; x: number; y: number; path: { x: number; y: number }[] }[] = [], stops: { type: string; x: number; y: number; house?: string }[] = []) {
       const live = t !== lastT; lastT = t // battle paused: everyone freezes mid-stride
       const adt = live ? dt : 0
       clock += adt
@@ -256,12 +266,21 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
       }
       runners.forEach((r, i) => {
         const c = couriers[i]
-        r.f.root.visible = !!c
+        // the pool's tail end plays the riders who were just stopped: a caught rider stands held where he was taken, a shot one falls there
+        const st = c ? undefined : stops.filter(x => x.type !== 'lost' && x.house)[RUNNERS - 1 - i]
+        r.f.root.visible = !!(c || st); seals[i].visible = false
+        if (st) {
+          dress(r, st.house!); play(r.f, st.type === 'killed' ? 'Death_A' : 'Idle', st.type === 'killed', 0.1)
+          r.f.root.position.copy(W(st.x, st.y, 0)); r.f.root.scale.setScalar(1.5); r.f.mixer.timeScale = 1; r.f.mixer.update(adt)
+          seals[i].visible = true; seals[i].material = sealMat[st.house!]; seals[i].position.copy(W(st.x, st.y, st.type === 'killed' ? 22 : 52))
+          return
+        }
         if (!c) return
-        if (r.house !== c.house) { r.house = c.house; r.f.root.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) m.material = houseMat(courierMat!, c.house, 0.14) }) }
-        const to = c.path[0]
+        dress(r, c.house); play(r.f, 'Running_A')
+        const to = c.path[0], order = c.kind !== 'report'
         if (to && Math.hypot(to.x - c.x, to.y - c.y) > 1) r.f.root.rotation.y = Math.atan2(to.x - c.x, to.y - c.y)
-        r.f.root.position.copy(W(c.x, c.y, 0)); r.f.root.scale.setScalar(c.kind === 'report' ? 0.8 : 1)
+        r.f.root.position.copy(W(c.x, c.y, 0)); r.f.root.scale.setScalar(order ? 1.5 : 0.8) // the riders carrying orders are the show: bigger than a soldier
+        if (order) { seals[i].visible = true; seals[i].material = sealMat[c.house]; seals[i].position.copy(W(c.x, c.y, 52 + Math.sin(clock * 5 + i) * 2)) }
         r.f.mixer.timeScale = 1.6; r.f.mixer.update(adt)
         P.copy(W(c.x, c.y, 0.7)); S.set(12, 10, 1); M.compose(P, Q, S); blobs.setMatrixAt(bn++, M)
       })

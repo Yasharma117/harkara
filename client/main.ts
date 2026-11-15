@@ -131,6 +131,7 @@ $('houses').innerHTML = init.houses.map((h: any) => `<div class="house" data-h="
   end = await get('end.json')
   // smoke rises at the sender's camp and a truce letter lands at the receiver's: give those moments a place, so the camera can go there
   for (const e of events) if (e.type === 'smoke' || e.type === 'truce') { const n = nodes.get(`${e.type === 'smoke' ? e.house : e.b}-camp`); if (n) { e.x = n.x; e.y = n.y } }
+  beats()
   tale = story(events, letters, COLOR, $('stage'), init.houses.every((h: any) => h.model === 'scripted'), h => {
     if (h && !beliefOf) { fordNote.innerHTML = `Now showing the field as <b style="color:${COLOR[h]}">${cap(h)}</b> believes it is. Ghosts mark where it thinks armies are.`; fordNote.classList.add('on'); clearTimeout(fordNoteT); fordNoteT = window.setTimeout(() => fordNote.classList.remove('on'), 5000); autoBelief = true; ($(`beliefs`).querySelector(`[data-v="${h}"]`) as HTMLElement | null)?.click(); setTimeout(() => { if (autoBelief) { autoBelief = false; ($(`beliefs`).firstElementChild as HTMLElement)?.click() } }, 5000) }
   }, (x, y) => { shot = { x, y, from: t, until: t + 720, r: 430 } }) // the camera goes where the caption points
@@ -234,9 +235,9 @@ function draw() {
   } else $('belief-err').textContent = ''
   if (view === 'diorama' && dio) {
     const cbm = new Map(b.c.map(c => [c[0], c]))
-    const flashes: { type: string; x: number; y: number; age: number }[] = []
+    const flashes: { type: string; x: number; y: number; age: number; house: string }[] = []
     // a stamp where a rider carrying an order or a letter was caught, shot or lost (a scouting report caught is routine): one per place
-    for (let i = events.length - 1; i >= 0 && events[i].t > t - 200; i--) { const e = events[i]; if (e.t <= t && ['caught', 'killed', 'lost'].includes(e.type) && letters.get(e.letter)?.kind !== 'report' && !flashes.some(f => Math.hypot(f.x - e.x, f.y - e.y) < 90)) flashes.push({ type: e.type, x: e.x, y: e.y, age: (t - e.t) / 200 }) }
+    for (let i = events.length - 1; i >= 0 && events[i].t > t - 200; i--) { const e = events[i]; if (e.t <= t && ['caught', 'killed', 'lost'].includes(e.type) && letters.get(e.letter)?.kind !== 'report' && !flashes.some(f => Math.hypot(f.x - e.x, f.y - e.y) < 90)) flashes.push({ type: e.type, x: e.x, y: e.y, age: (t - e.t) / 200, house: e.house }) }
     dio.render({
       t,
       squads: squadInfo.map((s, i) => ({ ...s, ...pos[i] })),
@@ -253,7 +254,7 @@ function draw() {
       flashes,
       smokes: events.filter(e => e.type === 'smoke' && e.t <= t && t - e.t < 300).map(e => ({ ...nodes.get(`${e.house}-camp`), age: (t - e.t) / 300 })),
       ghosts,
-      shot: director(t, pos),
+      shot: aim(director(t, pos), pos),
     }, performance.now() / 1000)
     return
   }
@@ -308,22 +309,29 @@ function draw() {
 }
 
 // ---- camera director: look ahead ~9 game seconds, pick the best moment, hold it until just after it happens
-const SCORE: Record<string, number> = { standard: 10, clash: 7, killed: 6, caught: 6 } // the fighting is the show now; riders next // decodes and truces happen in camp; their letter cards tell them, the camera stays on the field
+const SCORE: Record<string, number> = { standard: 10, ford: 8, clash: 7, killed: 6, caught: 6 } // the fighting is the show now; riders next // decodes and truces happen in camp; their letter cards tell them, the camera stays on the field
 let shot: { x: number; y: number; from: number; until: number; r?: number } | null = null
 // how close the camera pushes in for each kind of moment: a capture or a broken cipher is personal, a clash is wide
-const LENS: Record<string, number> = { standard: 380, caught: 420, killed: 430, decode: 420, truce: 480, clash: 440 } // close: the soldiers' animation is the show
+const LENS: Record<string, number> = { ford: 470, standard: 380, caught: 420, killed: 430, decode: 420, truce: 480, clash: 440 } // close: the soldiers' animation is the show
 // a shot needs context: two houses in frame, or one house at a named landmark (ford, ferry, camp, village)
 const LANDMARK = [...nodes.values()].filter((n: any) => /^F\d|ferry|-camp|village/.test(n.id))
 function context(at: { x: number; y: number }, pos: { x: number; y: number; flags: number }[]) {
   const houses = new Set(pos.flatMap((p, i) => (!(p.flags & 2) && Math.hypot(p.x - at.x, p.y - at.y) < 220 ? [squadInfo[i].house] : [])))
   return houses.size > 1 || (houses.size === 1 && LANDMARK.some((n: any) => Math.hypot(n.x - at.x, n.y - at.y) < 150))
 }
+// never frame empty ground: a shot settles halfway onto the soldiers around its target; with nobody there and no landmark, stay wide
+function aim(s: typeof shot, pos: { x: number; y: number; flags: number }[]) {
+  if (!s) return s
+  const near = pos.filter(p => !(p.flags & 2) && Math.hypot(p.x - s.x, p.y - s.y) < 200)
+  if (!near.length) return LANDMARK.some((n: any) => Math.hypot(n.x - s.x, n.y - s.y) < 150) ? s : null
+  return { ...s, x: (s.x + near.reduce((a, p) => a + p.x, 0) / near.length) / 2, y: (s.y + near.reduce((a, p) => a + p.y, 0) / near.length) / 2 }
+}
 function director(tt: number, pos: { x: number; y: number; flags: number }[]) {
   // hold every shot at least ~5 s of play, so the camera settles; only a bigger moment may cut in early
   // the battle opens wide, and the camera pulls back to the whole valley for a breath after every story
   if (tt < 2 * TPW || (shot && tt >= Math.max(shot.until, shot.from + 720) && tt < Math.max(shot.until, shot.from + 720) + 260)) return null
   if (shot && tt >= shot.from && tt < Math.max(shot.until, shot.from + 720)) { // ~9 s at 8×: long enough to follow one army
-    const urgent = events.find(e => e.t > tt && e.t < tt + 120 && e.type === 'standard')
+    const urgent = events.find(e => e.t > tt && e.t < tt + 120 && (e.type === 'standard' || (e.type === 'ford' && (e.decisive || e.t > TOTAL - 3 * TPW)) && Math.hypot(e.x - shot!.x, e.y - shot!.y) > 60))
     if (!urgent) return shot
   }
   let best: { x: number; y: number; s: number; t: number; type: string } | null = null
@@ -333,11 +341,12 @@ function director(tt: number, pos: { x: number; y: number; flags: number }[]) {
     let sc = SCORE[e.type]
     if (!sc || (e.type === 'decode' && !e.readable)) continue
     if (e.type === 'clash' && (e.a.includes('arch') || e.b.includes('arch'))) sc = 4 // archers skirmishing is not a battle line
+    if (e.type === 'ford' && (e.decisive || e.t > TOTAL - 3 * TPW)) sc = e.decisive ? 12 : 9
     if ((e.type === 'caught' || e.type === 'killed') && letters.get(e.letter)?.kind === 'report') sc = 0
     const at = e.x != null ? e : nodes.get(`${e.type === 'truce' ? e.a : e.house}-camp`)
-    if (at && context(at, pos) && (!best || sc > best.s)) best = { x: at.x, y: at.y, s: sc, t: e.t, type: e.type }
+    if (at && (e.type === 'ford' || context(at, pos)) && (!best || sc > best.s)) best = { x: at.x, y: at.y, s: sc, t: e.t, type: e.type }
   }
-  if (best) return (shot = { x: best.x, y: best.y, from: tt, until: best.t + (best.s >= 6 ? 110 : 40), r: LENS[best.type] }) // big moments hold a beat longer
+  if (best) return (shot = { x: best.x, y: best.y, from: tt, until: best.t + (best.type === 'ford' ? 420 : best.s >= 6 ? 110 : 40), r: LENS[best.type] }) // big moments hold a beat longer
   // nothing big coming: go back to where the latest action was (its ring may still be showing), if it was recent
   for (let i = events.length - 1; i >= 0; i--) {
     const e = events[i]
@@ -360,7 +369,9 @@ function director(tt: number, pos: { x: number; y: number; flags: number }[]) {
 const nice = (sid: string) => { const s = squadInfo.find(x => x.id === sid); return s ? `<b>${cap(s.house)}'s</b> ${String(s.name).toLowerCase()}` : sid }
 const name = (sid: string) => { const s = squadInfo.find(x => x.id === sid); return s ? `${s.house} ${s.name}` : sid.replace('-camp', '') }
 const W = (e: Ev) => `<small>w${Math.floor(e.t / TPW) + 1}</small>`
-const HEADLINE = new Set(['caught', 'killed', 'decode', 'truce', 'smoke', 'standard', 'destroyed', 'end'])
+const HEADLINE = new Set(['caught', 'killed', 'decode', 'truce', 'truceend', 'ford', 'smoke', 'standard', 'destroyed', 'end'])
+const hb = (h: string) => `<b style="color:${COLOR[h]}">${cap(h)}</b>`
+const fordLine = (e: Ev) => e.now && e.was ? `${hb(e.now)} takes the <b>${e.name} ford</b> from ${hb(e.was)}: +100 to ${cap(e.now)}, −100 to ${cap(e.was)}.` : e.now ? `${hb(e.now)} holds the <b>${e.name} ford</b>: +100.` : `${hb(e.was)} loses the <b>${e.name} ford</b> (${e.fight ? 'an enemy matched its numbers there' : 'its soldiers marched away'}): −100.`
 function line(e: Ev): string | null {
   if (!allFeed && e.type === 'decode' && e.readable && firstRead.get(`${e.house}:${e.letter}`) !== e.seq) return null // a letter is news once: when it first becomes readable
   if (!allFeed && (!HEADLINE.has(e.type) || (e.type === 'decode' && !e.readable) || ((e.type === 'caught' || e.type === 'killed') && letters.get(e.letter)?.kind === 'report'))) return null // headlines: only what changes the story
@@ -369,10 +380,12 @@ function line(e: Ev): string | null {
     case 'thought': return `<div class="item" style="--c:${COLOR[e.house]}">${W(e)} <b>${e.house}</b> thinks: ${e.text.replace(/\b0 watches ago/g, 'just now').replace(/\b1 watches\b/g, '1 watch')}</div>`
     case 'courier': return e.kind === 'report' || L!.id !== e.id ? null : `<div class="item" style="--c:${COLOR[e.house]}">${W(e)} ${e.house} sends ${e.kind === 'decoy' ? 'a <b>decoy</b>' : `a ${e.cipher ? 'ciphered' : 'plain'} ${e.kind}`} to ${name(e.to)}${e.double ? ', two riders by two roads' : ''}${e.depart > e.t ? ' (leaves next watch, enciphering)' : ''}: <span class="mono">${e.plain}</span></div>`
     case 'caught': case 'killed': { const who = squadInfo.find(x => x.id === e.by), by = who ? `${cap(who.house)}'s ${String(who.name).toLowerCase()}` : name(e.by), what = L?.kind === 'letter' ? 'letter' : L?.kind === 'decoy' ? 'decoy' : 'order'
-      return `<div class="item big" style="--c:#c0392b">${W(e)} ${by} ${e.type === 'caught' ? 'caught' : 'shot down'} <b>${cap(e.house)}'s</b> rider${L?.kind === 'report' ? '' : L?.cipher ? `, carrying a ciphered ${what}${e.type === 'caught' ? ' they cannot read yet' : ''}` : `, carrying a plain ${what}: <q>${String(L?.plain ?? '').toLowerCase().replace(/[.]$/, '')}</q>`}.</div>` }
+      return `<div class="item${L?.cipher ? '' : ' big'}" style="--c:#c0392b">${W(e)} ${by} ${e.type === 'caught' ? 'caught' : 'shot down'} <b>${cap(e.house)}'s</b> rider${L?.kind === 'report' ? '' : L?.cipher ? `, carrying a ciphered ${what}${e.type === 'caught' ? ' they cannot read yet' : ''}` : `, carrying a plain ${what}: <q>${String(L?.plain ?? '').toLowerCase().replace(/[.]$/, '')}</q>`}.</div>` }
     case 'lost': return L?.kind === 'report' || e.why === 'nobody left to receive it' ? null : `<div class="item" style="--c:#888">${W(e)} ${e.house} rider ${e.why}.</div>`
     case 'decode': return `<div class="item big" style="--c:${COLOR[e.house]}">${W(e)} <b>${e.house}</b> clerks ${e.readable ? '<b>can read</b>' : 'work on'} ${L?.house}'s letter:<br><span class="mono">${e.text}</span><br><small>truth: <span class="mono">${L?.plain}</span></small></div>`
     case 'intel': return e.plain ? null : `<div class="item" style="--c:${COLOR[e.house]}">${W(e)} captured ${e.from} letter reaches ${e.house} camp: <span class="mono">${e.text}</span></div>`
+    case 'ford': return `<div class="item big" style="--c:${COLOR[e.house]}">${W(e)} ${e.decisive ? '<b>The turning point.</b> ' : ''}${fordLine(e)}${e.decisive ? ` ${cap(e.lead1)} takes the lead.` : ''}</div>`
+    case 'truceend': return `<div class="item" style="--c:#4e7a5a">${W(e)} The truce between ${hb(e.a)} and ${hb(e.b)} has <b>run out</b>. They may attack each other again.</div>`
     case 'truce': return `<div class="item big" style="--c:#4e7a5a">${W(e)} <b>${cap(e.a)}</b> and <b>${cap(e.b)}</b> agree a <b>truce</b>: no attacks on each other until watch ${e.until}.</div>`
     case 'smoke': return `<div class="item big" style="--c:${COLOR[e.house]}">${W(e)} <b>${cap(e.house)}</b> lights a smoke signal at its camp: <b>${e.code}</b>. Its whole army obeys at once, but every enemy sees it too.</div>`
     case 'rout': return `<div class="item" style="--c:#888">${W(e)} ${nice(e.squad)} break and run for their camp.</div>`
@@ -389,7 +402,7 @@ function feed() {
   shown = n
   const out: string[] = []
   let prev = '', first = '', rep = 1
-  const groups = new Map<string, { n: number; at: number; e: Ev }>()
+  const groups = new Map<string, { n: number; at: number; e: Ev; from: Set<string> }>()
   for (let i = n - 1; i >= 0 && out.length < 80; i--) {
     const e = events[i]
     // one general's orders sent in the same watch read as one dispatch, not a wall of near-identical lines
@@ -406,10 +419,10 @@ function feed() {
     }
     if (!allFeed && (e.type === 'caught' || e.type === 'killed') && line(e)) {
       // one captor taking one house's riders again and again reads as one headline per three watches
-      const by = String(e.by).split('-')[0], key = `${by}:${e.house}:${Math.floor(e.t / TPW / 3)}`
+      const by = String(e.by).split('-')[0], key = `${by}:${Math.floor(e.t / TPW / 3)}`
       const g = groups.get(key)
-      if (g) { g.n++; continue }
-      groups.set(key, { n: 1, at: out.length, e })
+      if (g) { g.n++; g.from.add(e.house); continue }
+      groups.set(key, { n: 1, at: out.length, e, from: new Set([e.house]) })
       out.push('')
       continue
     }
@@ -419,7 +432,7 @@ function feed() {
     if (key === prev) { rep++; out[out.length - 1] = first.replace(/<\/div>$/, ` <small>×${rep}</small></div>`); continue }
     prev = key; first = l; rep = 1; out.push(l)
   }
-  for (const g of groups.values()) out[g.at] = g.n > 1 ? `<div class="item big" style="--c:#c0392b">${W(g.e)} <b>${cap(String(g.e.by).split('-')[0])}</b> caught <b>${g.n} ${cap(g.e.house)}</b> riders. ${cap(g.e.house)}'s orders are not getting through.</div>` : line(g.e)!
+  for (const g of groups.values()) out[g.at] = g.n > 1 ? `<div class="item big" style="--c:#c0392b">${W(g.e)} ${hb(String(g.e.by).split('-')[0])} has caught <b>${g.n} riders</b> from ${[...g.from].map(hb).join(' and ')}. Those orders never arrived.</div>` : line(g.e)!
   if (!out.length && !allFeed) out.push('<p class="feed-empty">No big moments yet. Interceptions, broken ciphers, truces and smoke signals will appear here. <b>All dispatches</b> shows every order and every general’s thinking.</p>')
   if (tab === 'feed') $('feed').innerHTML = out.join('')
   else mailbag()
@@ -513,6 +526,47 @@ function dispatchCard(lid: string, captor: string) {
 }
 
 // ---- who holds each ford right now, by the same rule that decides the battle: the house with the most soldiers at it
+type Pos = { x: number; y: number; flags: number; str: number }
+function fordAt(f: string, pos: Pos[]) {
+  const n = nodes.get(f), by = HOUSES.map(h => [h, pos.reduce((a, p, i) => a + (squadInfo[i].house === h && !(p.flags & 3) && Math.hypot(p.x - n.x, p.y - n.y) < 50 ? p.str : 0), 0)] as [string, number]).sort((a, b) => b[1] - a[1])
+  return { name: n.name.replace(' FORD', '').toLowerCase(), h: by[0][1] > 0 && by[0][1] > by[1][1] ? by[0][0] : null as string | null, fight: by[1][1] > 0 }
+}
+// the live score, counted as the end counts it: 100 per ford held, plus every surviving soldier
+const scoreAt = (pos: Pos[], held: { h: string | null }[]) => Object.fromEntries(HOUSES.map(h => [h, held.filter(f => f.h === h).length * 100 + Math.round(pos.reduce((a, p, i) => a + (squadInfo[i].house === h && !(p.flags & 2) ? p.str : 0), 0))]))
+
+// ---- story beats the simulation doesn't announce: fords changing hands (read off the frames by the rule above), truces
+// running out, and the move that decided the battle. They join the event list so the feed, narrator and camera all use them.
+let turning: Ev | null = null
+function beats() {
+  const extra: Ev[] = [], P = (f: any): Pos[] => squadInfo.map((_, i) => ({ x: f.s[i * 4], y: f.s[i * 4 + 1], str: f.s[i * 4 + 2], flags: f.s[i * 4 + 3] }))
+  const lead = (f: any) => { const pos = P(f), sc = scoreAt(pos, init.map.fords.map((x: string) => fordAt(x, pos))); return HOUSES.slice().sort((a, b) => sc[b] - sc[a])[0] }
+  const fords: string[] = init.map.fords, cur: (string | null)[] = fords.map(() => null), pend: (string | null)[] = fords.map(() => null), since = fords.map(() => -1)
+  frames.forEach((f, k) => {
+    const pos = P(f)
+    fords.forEach((id, i) => {
+      const now = fordAt(id, pos)
+      if (now.h === cur[i]) { since[i] = -1; return }
+      if (since[i] < 0 || pend[i] !== now.h) { since[i] = k; pend[i] = now.h; return }
+      if (f.t - frames[since[i]].t < 90) return // a change must hold: men passing through a ford don't take it
+      const n = nodes.get(id), at = frames[since[i]]
+      extra.push({ type: 'ford', t: at.t, ford: id, name: now.name, was: cur[i], now: now.h, fight: now.fight, house: now.h ?? cur[i], x: n.x, y: n.y, lead0: lead(frames[Math.max(0, since[i] - 1)]), lead1: lead(f) } as any)
+      cur[i] = now.h; since[i] = -1
+    })
+  })
+  const fin = events.find(e => e.type === 'end')
+  // the turning point: the last ford to change hands in the closing watches that handed the lead to the winner
+  if (fin) turning = extra.findLast(e => e.t >= TOTAL - 5 * TPW && e.lead1 === fin.winner && e.lead0 !== fin.winner) ?? null
+  if (turning) turning.decisive = true
+  const tr = events.filter(e => e.type === 'truce')
+  for (const e of tr) {
+    const key = [e.a, e.b].sort().join(), tEnd = e.until * TPW
+    if (tEnd >= TOTAL || tr.some(o => o !== e && [o.a, o.b].sort().join() === key && o.t > e.t && o.t <= tEnd)) continue // renewed, or it outlasts the battle
+    extra.push({ type: 'truceend', t: tEnd, a: e.a, b: e.b, house: e.a } as any)
+  }
+  events.push(...extra); events.sort((a, b) => a.t - b.t) // stable: the simulation's own order is kept
+  events.forEach((e, i) => { if (e.seq == null) e.seq = (events[i - 1]?.seq ?? 0) + 0.001 })
+  shown = -1
+}
 const strip = document.createElement('div'); strip.id = 'fords'; $('stage').append(strip)
 let stripKey = '', pendKey = '', pendAt = 0, shownF = '', fordNoteT = 0
 const fordNote = document.createElement('div'); fordNote.id = 'fordnote'; $('stage').append(fordNote)
@@ -520,12 +574,10 @@ function fordStrip(pos: { x: number; y: number; flags: number; str: number }[]) 
   const over = end && events.some(e => e.type === 'end' && e.t <= t)
   const held = init.map.fords.map((f: string) => {
     if (over) { const h = end.fords[f]; return { name: nodes.get(f).name.replace(' FORD', '').toLowerCase(), h, fight: false } }
-    const n = nodes.get(f), by = HOUSES.map(h => [h, pos.reduce((a, p, i) => a + (squadInfo[i].house === h && !(p.flags & 3) && Math.hypot(p.x - n.x, p.y - n.y) < 50 ? p.str : 0), 0)] as [string, number]).sort((a, b) => b[1] - a[1])
-    return { name: n.name.replace(' FORD', '').toLowerCase(), h: by[0][1] > 0 && by[0][1] > by[1][1] ? by[0][0] : null, fight: by[1][1] > 0 }
+    return fordAt(f, pos)
   })
   const two = HOUSES.find(h => held.filter((f: any) => f.h === h).length >= 2)
-  // the live score, counted as the end counts it: 100 per ford held, plus every surviving soldier
-  const score = Object.fromEntries(HOUSES.map(h => [h, over ? end.scores[h] : held.filter((f: any) => f.h === h).length * 100 + Math.round(pos.reduce((a, p, i) => a + (squadInfo[i].house === h && !(p.flags & 2) ? p.str : 0), 0))]))
+  const score = over ? end.scores : scoreAt(pos, held)
   const rank = HOUSES.slice().sort((a, b) => score[b] - score[a])
   const key = JSON.stringify(held) + two + rank.map(h => h + Math.round(score[h] / 5)).join()
   if (key === stripKey) return
@@ -535,7 +587,6 @@ function fordStrip(pos: { x: number; y: number; flags: number; str: number }[]) 
   if (shownF && fkey !== shownF && !over) {
     const prev = JSON.parse(shownF.slice(0, shownF.lastIndexOf(']') + 1) || '[]'); const ch = held.findIndex((f: any, i: number) => prev[i] && prev[i].h !== f.h)
     if (ch >= 0) {
-      const n = nodes.get(init.map.fords[ch]); shot = { x: n.x, y: n.y, from: t, until: t + 600, r: 460 }
       // say why the score just moved: a ford is worth 100 to whoever has the most soldiers at it
       const was = prev[ch].h, now = held[ch].h, nm = `the ${held[ch].name} ford`
       fordNote.innerHTML = now ? `<b style="color:${COLOR[now]}">${cap(now)}</b> now has the most soldiers at ${nm}: <b>+100</b>${was ? ` · ${cap(was)} −100` : ''}` : `<b style="color:${COLOR[was]}">${cap(was)}</b> no longer holds ${nm} (${held[ch].fight ? 'matched by an enemy' : 'it has left'}): <b>−100</b>`
@@ -543,7 +594,7 @@ function fordStrip(pos: { x: number; y: number; flags: number; str: number }[]) 
     }
   }
   shownF = fkey; stripKey = key
-  strip.innerHTML = `<span class="fd-t">Fords</span>${held.map((f: any) => `<span class="fd" style="--c:${f.h ? COLOR[f.h] : '#8a7d66'}"><i></i>${f.name} <b>${f.h ? f.h + (f.fight ? ' (fighting)' : '') : f.fight ? 'tied' : 'empty'}</b></span>`).join('')}${two ? `<span class="fd-win" style="--c:${COLOR[two]}">${two} holds two</span>` : ''}<span class="fd-t fd-sc" title="100 for each ford held alone, plus every soldier still standing">Score <i class="fd-how">100/ford + men</i></span>${rank.map((h, i) => `<span class="sc${i ? '' : ' lead'}" style="--c:${COLOR[h]}">${cap(h)} <b>${score[h]}</b></span>`).join('')}`
+  strip.innerHTML = `<span class="fd-t">Fords</span>${held.map((f: any) => `<span class="fd" style="--c:${f.h ? COLOR[f.h] : '#8a7d66'}"><i></i>${f.name} <b>${f.h ? f.h + (f.fight ? ' <em>contested</em>' : '') : f.fight ? 'tied' : 'empty'}</b></span>`).join('')}${two ? `<span class="fd-win" style="--c:${COLOR[two]}">${two} holds two</span>` : ''}<span class="fd-t fd-sc" title="100 for each ford held alone, plus every soldier still standing">Score</span>${rank.map((h, i) => `<span class="sc${i ? '' : ' lead'}" style="--c:${COLOR[h]}">${cap(h)} <b>${score[h]}</b></span>`).join('')}`
 }
 
 // ---- the ending: who won, why, and what each general's mail cost it
@@ -566,7 +617,7 @@ function ending() {
   const rows = HOUSES.slice().sort((a, b) => end.scores[b] - end.scores[a])
   endCard.innerHTML = `<div class="ec-in"><small>Watch ${manifest.watches} · the battle is over</small>
     <h2 style="color:${COLOR[fin.winner]}">${init.houses.find((h: any) => h.id === fin.winner)?.name ?? cap(fin.winner)} wins</h2>
-    <p>${why}</p>
+    <p>${why}</p>${turning ? `<p class="ec-turn"><b>The turning point, watch ${Math.floor(turning.t / TPW) + 1}:</b> ${fordLine(turning)} That put ${cap(turning.lead1)} ahead of ${cap(turning.lead0)}.</p>` : ''}
     <div class="ec-fords">${held.map(([f, h]) => `<span style="--c:${h ? COLOR[h] : '#8a7d66'}"><i></i>${fordName(f)}: <b>${h ? cap(h) : 'nobody'}</b></span>`).join('')}</div>
     <table><tr><th></th><th>Score</th><th>Riders lost</th><th>Letters taken</th><th>Ciphers broken</th></tr>
     ${rows.map(h => `<tr><td><b style="color:${COLOR[h]}">${cap(h)}</b></td><td>${end.scores[h]}</td><td>${per(h, 'caught', 'house') + per(h, 'killed', 'house')}</td><td>${per(h, 'caught', 'by')}</td><td>${new Set(events.filter(e => e.type === 'decode' && e.readable && e.house === h).map(e => e.letter)).size}</td></tr>`).join('')}</table>
@@ -579,7 +630,19 @@ function ending() {
 // ---- general cards: a card pulses when its general acts (sends, catches, decodes, makes a truce)
 const ACT = new Set(['caught', 'killed', 'decode', 'truce', 'smoke']) // real moments only: everyone sends orders all the time
 let pulsed = -1
+let pactKey = ''
+function pacts() {
+  const on = events.filter(e => e.type === 'truce' && e.t <= t && t < e.until * TPW), key = on.map(e => e.seq).join()
+  if (key === pactKey) return
+  pactKey = key
+  for (const el of document.querySelectorAll<HTMLElement>('.house')) {
+    const h = el.dataset.h!, mine = new Map(on.filter(e => e.a === h || e.b === h).map(e => [e.a === h ? e.b : e.a, e.until])) // a renewed pact shows once, with its latest end
+    let p = el.querySelector<HTMLElement>('.pact'); if (!p) { p = document.createElement('span'); p.className = 'pact'; el.append(p) }
+    p.innerHTML = [...mine].map(([o, u]) => `Truce with <b style="color:${COLOR[o]}">${cap(o)}</b> to watch ${u}`).join(' · '); p.hidden = !mine.size
+  }
+}
 function pulseCards() {
+  pacts()
   let i = events.length - 1
   while (i >= 0 && events[i].t > t) i--
   if (i < 0 || events[i].seq === pulsed) return

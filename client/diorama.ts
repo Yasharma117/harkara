@@ -10,7 +10,7 @@ export interface Snap {
   t: number
   squads: { id: string; house: string; type: string; x: number; y: number; str: number; flags: number }[]
   couriers: { id: string; house: string; kind: string; x: number; y: number; path: { x: number; y: number }[] }[]
-  flashes: { type: string; x: number; y: number; age: number }[]
+  flashes: { type: string; x: number; y: number; age: number; house?: string }[]
   smokes: { x: number; y: number; age: number }[] // smoke signals lit at a camp, age 0→1
   ghosts: { house: string; type: string; x: number; y: number; tx: number; ty: number }[] // belief view: where a general thinks units are
   shot: { x: number; y: number; r?: number } | null // the camera director's pick, used when nobody is driving; r = how close
@@ -267,7 +267,10 @@ export async function createDiorama(host: HTMLElement, init: any) {
   const mistAt = hills.flatMap((n: any) => [0, 1, 2, 3].map(i => ({ x: n.x + (i - 1.5) * 50, y: n.y + ((i * 37) % 60) - 30, s: 220 + i * 30, ph: i * 1.7 })))
 
   // couriers' ink routes + flash rings
-  const routes = new Map<string, THREE.Line>()
+  const BEADS = 4000, beadGeo = new THREE.CircleGeometry(1, 12); beadGeo.rotateX(-Math.PI / 2)
+  const beads = new THREE.InstancedMesh(beadGeo, new THREE.MeshBasicNodeMaterial({ transparent: true, opacity: 0.92, depthWrite: false }), BEADS)
+  beads.frustumCulled = false; beads.renderOrder = 2; scene.add(beads)
+  const trod = new Map<string, { x: number; y: number }[]>(), ink = new THREE.Color('#2a2016')
   const ringGeo = new THREE.RingGeometry(0.84, 1, 64); ringGeo.rotateX(-Math.PI / 2)
   const edgeGeo = new THREE.RingGeometry(0.78, 1.06, 64); edgeGeo.rotateX(-Math.PI / 2) // a dark edge behind each ring, so it reads on any house colour
   const TAGTEX: Record<string, { m: THREE.SpriteNodeMaterial; w: number }> = Object.fromEntries(([['caught', 'RIDER CAUGHT', '#b3242f'], ['killed', 'RIDER SHOT', '#b3242f'], ['lost', 'RIDER LOST IN MIST', '#5a5348']] as const).map(([k, txt, bg]) => {
@@ -446,7 +449,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
         }
       }
       shadows.count = sh; shadows.instanceMatrix.needsUpdate = true
-      army?.update(shown, s.t, dt, s.couriers)
+      army?.update(shown, s.t, dt, s.couriers, s.flashes)
       discs.count = dn; discs.instanceMatrix.needsUpdate = true; if (discs.instanceColor) discs.instanceColor.needsUpdate = true
       roundel.mesh.count = rn; roundel.mesh.instanceMatrix.needsUpdate = true
       barBg.count = barFg.count = rn; barBg.instanceMatrix.needsUpdate = barFg.instanceMatrix.needsUpdate = true; if (barFg.instanceColor) barFg.instanceColor.needsUpdate = true
@@ -454,7 +457,7 @@ export async function createDiorama(host: HTMLElement, init: any) {
       if (flag) { flag.mesh.count = fl; flag.mesh.instanceMatrix.needsUpdate = true; flag.tint.needsUpdate = true }
       for (const [k, b] of Object.entries(units)) if (k !== 'harkara') { b.mesh.count = n[k]; b.mesh.instanceMatrix.needsUpdate = true; b.tint.needsUpdate = true }
       // couriers: a runner and a line of ink ahead of it
-      const h = units.harkara, live = new Set<string>()
+      const h = units.harkara, live = new Set<string>(); let bd = 0
       s.couriers.slice(0, 80).forEach((c, i) => {
         const prev = lastX.get(c.id) ?? c.x; lastX.set(c.id, c.x)
         const flip = c.x >= prev ? 1 : -1
@@ -464,18 +467,23 @@ export async function createDiorama(host: HTMLElement, init: any) {
         if (dust) place(dust.mesh, i, c.x - flip * 10, c.y + 1, 16 * dust.aspect * flip * (0.8 + 0.3 * Math.abs(Math.sin(time * 5 + i))), 16, yaw)
         if (c.kind === 'report') return
         live.add(c.id)
-        let line = routes.get(c.id)
-        if (!line) { line = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicNodeMaterial({ color: col, transparent: true, opacity: 0.8 })); routes.set(c.id, line); scene.add(line) }
-        const pts: THREE.Vector3[] = []
-        let ax = c.x, ay = c.y
-        for (const p of c.path) { const d = Math.hypot(p.x - ax, p.y - ay), steps = Math.max(1, Math.ceil(d / 15)); for (let j = 0; j <= steps; j++) pts.push(W(ax + ((p.x - ax) * j) / steps, ay + ((p.y - ay) * j) / steps, 1.5)); ax = p.x; ay = p.y }
-        line.geometry.setFromPoints(pts.length > 1 ? pts : [W(c.x, c.y, 1.5), W(c.x, c.y, 1.5)])
+        const bead = (x: number, y: number, r: number, cc: THREE.Color) => { if (bd >= BEADS) return; P.copy(W(x, y, 1.6)); S.setScalar(r); M.compose(P, Q.identity(), S); beads.setMatrixAt(bd, M); beads.setColorAt(bd++, cc) }
+        // where he has been: small dark beads back to the camp he left
+        const been = trod.get(c.id) ?? trod.set(c.id, []).get(c.id)!, lastB = been.at(-1)
+        if (!lastB || Math.hypot(lastB.x - c.x, lastB.y - c.y) > 16) been.push({ x: c.x, y: c.y })
+        const dim = col.clone().lerp(ink, 0.45)
+        for (const p of been) bead(p.x, p.y, 2.2, dim)
+        // where he is going: bright beads that pulse toward the destination, which gets a ring of its own
+        let ax = c.x, ay = c.y, j = 0
+        for (const p of c.path) { const d = Math.hypot(p.x - ax, p.y - ay), steps = Math.max(1, Math.ceil(d / 16)); for (let q = 1; q <= steps; q++, j++) bead(ax + ((p.x - ax) * q) / steps, ay + ((p.y - ay) * q) / steps, 3 + 1.2 * Math.max(0, Math.sin(time * 6 - j * 0.7)), col); ax = p.x; ay = p.y }
+        if (c.path.length) bead(ax, ay, 8, col)
       })
+      beads.count = bd; beads.instanceMatrix.needsUpdate = true; if (beads.instanceColor) beads.instanceColor.needsUpdate = true
+      for (const id of trod.keys()) if (!live.has(id)) trod.delete(id)
       riderIds = s.couriers.slice(0, 80).map(c => c.id)
       if (dust) { dust.mesh.count = Math.min(80, s.couriers.length); dust.mesh.instanceMatrix.needsUpdate = true }
       if (smoke) { s.smokes.slice(0, 4).forEach((m, i) => { const sh = 90 + m.age * 70; place(smoke.mesh, i, m.x + 30, m.y - 30, sh * smoke.aspect, sh, yaw) }); smoke.mesh.count = Math.min(4, s.smokes.length); smoke.mesh.instanceMatrix.needsUpdate = true }
       h.mesh.count = Math.min(80, s.couriers.length); h.mesh.instanceMatrix.needsUpdate = true; h.tint.needsUpdate = true
-      for (const [id, l] of routes) if (!live.has(id)) { scene.remove(l); l.geometry.dispose(); routes.delete(id) }
       // belief ghosts + dotted lines to where the unit really is
       const gn: Record<string, number> = { inf: 0, arch: 0, cav: 0, ele: 0 }, seg: THREE.Vector3[] = []
       const grey = new THREE.Color('#9a958c')
@@ -503,11 +511,12 @@ export async function createDiorama(host: HTMLElement, init: any) {
         // ring the units as they are drawn (spacing moves them off the simulation spot), not the empty ground they left
         let best = -1, bd = 90
         s.squads.forEach((q, k) => { const d = Math.hypot(q.x - f.x, q.y - f.y); if (!(q.flags & 2) && drawn[k] && d < bd) { bd = d; best = k } })
-        let fx = best < 0 ? f.x : f.x + drawn[best].x - s.squads[best].x, fy = best < 0 ? f.y : f.y + drawn[best].y - s.squads[best].y // a catch or shot follows the squad that made it
+        let fx = f.x, fy = f.y // the stamp marks the rider himself, who stands (or lies) where he was stopped
+        if (f.type === 'clash' && best >= 0) { fx += drawn[best].x - s.squads[best].x; fy += drawn[best].y - s.squads[best].y }
         if (f.type === 'clash') { let n = 0, sx = 0, sy = 0; s.squads.forEach((q, k) => { if (!(q.flags & 2) && drawn[k] && Math.hypot(q.x - f.x, q.y - f.y) < 60) { sx += drawn[k].x; sy += drawn[k].y; n++ } }); if (n) { fx = sx / n; fy = sy / n } } // a clash rings the middle of everyone in it
         r.position.copy(W(fx, fy, 2)); r.scale.setScalar(16 + f.age * 50)
         // every ring says what it marks
-        const tx = TAGTEX[f.type]; if (tx) { tag.visible = true; tag.material = tx.m; tag.position.copy(W(fx, fy - 26, 34)); tag.scale.set(tx.w * 0.3, 36 * 0.3, 1) }
+        const tx = TAGTEX[f.type]; if (tx) { tag.visible = true; tag.material = tx.m; tag.position.copy(W(fx, fy, 72)); tag.scale.set(tx.w * 0.3, 36 * 0.3, 1) }
         const m = r.material as THREE.MeshBasicNodeMaterial
         m.color.set(f.type === 'clash' ? '#efe3c4' : f.type === 'lost' ? '#ffffff' : '#e8321e'); m.opacity = (f.type === 'clash' && army ? 0.4 : 0.95) * (1 - f.age * 0.7) // with 3D fighting visible, contact rings only whisper
         ;((r.children[0] as THREE.Mesh).material as THREE.MeshBasicNodeMaterial).opacity = (f.type === 'clash' ? 0.15 : 0.7) * (1 - f.age * 0.7)

@@ -74,6 +74,16 @@ export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<stri
           return tl ? { from: tl.house, to: `the ${CAP(String(tl.to).replace('-camp', ''))} camp`, seal: 'intact', head: 'A truce letter arrives', cipher: null, plain: tl.plain, reveal: true } : undefined
         })())
         break
+      case 'ford': {
+        // the score moving is the plot: who has the most soldiers at a ford, and what that is worth
+        const h = (x: string) => `<b style="color:${COLOR[x]}">${CAP(x)}</b>`, late = e.t > 27 * 300
+        const what = e.now && e.was ? `${h(e.now)} takes the <b>${e.name} ford</b> from ${h(e.was)}: it now has more soldiers there. +100 to ${CAP(e.now)}, −100 to ${CAP(e.was)}.` : e.now ? `${h(e.now)} holds the <b>${e.name} ford</b>: +100 for as long as it has the most soldiers there.` : `${h(e.was)} loses the <b>${e.name} ford</b>: ${e.fight ? 'an enemy has matched its numbers there' : 'its soldiers have marched away'}. −100.`
+        cand.push({ t: e.t, seq: e.seq, r: e.decisive ? 9.5 : late ? 8.5 : 5.5, hold: 0, c: COLOR[e.house], x: e.x, y: e.y, html: e.decisive ? `<b>The turning point.</b> ${what} ${h(e.lead1)} moves ahead of ${h(e.lead0)}.` : what })
+        break
+      }
+      case 'truceend':
+        cand.push({ t: e.t, seq: e.seq, r: 5.2, hold: 0, c: '#4e7a5a', html: `The truce between <b style="color:${COLOR[e.a]}">${CAP(e.a)}</b> and <b style="color:${COLOR[e.b]}">${CAP(e.b)}</b> has <b>run out</b>. From this watch they may attack each other again.` })
+        break
       case 'smoke':
         say(e, `<b style="color:${COLOR[e.house]}">${CAP(e.house)}</b> lights a smoke signal: <b>${e.code}</b>. Faster than any rider, but every enemy sees it too.`, COLOR[e.house])
         break
