@@ -3,7 +3,7 @@
 const KEY = 'harkara-sound'
 type House = { id: string; name: string; line: string }
 
-export async function voice(id: string, houses: House[], COLOR: Record<string, string>, portrait: (h: string) => string, stage: HTMLElement) {
+export async function voice(id: string, houses: House[], COLOR: Record<string, string>, portrait: (h: string) => string, stage: HTMLElement, card: (h: House) => string) {
   const clips: Record<string, string> = {} // voiceover removed: the roll-call cards and captions carry the words
   let on = localStorage.getItem(KEY) !== 'off'
   let speaking: HTMLAudioElement | null = null
@@ -22,7 +22,7 @@ export async function voice(id: string, houses: House[], COLOR: Record<string, s
   ov.hidden = true
   const m = id.match(/^(daily|ladder)-(\d{4}-\d{2}-\d{2})(?:-(\d+))?$/)
   const title = m ? `${new Date(m[2] + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}${m[1] === 'ladder' ? ` · ladder battle ${m[3]}` : ''}` : /^grey-(\d+)$/.test(id) ? `Rehearsal battle ${id.split('-')[1]}` : id.replace(/-/g, ' ')
-  ov.innerHTML = `<div class="op-title"><small>${m?.[1] === 'ladder' ? 'The Doctrine Ladder' : 'Today on the river'}</small><b>${title}</b></div><div class="op-cards">${houses.map(h => `<figure data-h="${h.id}" style="--c:${COLOR[h.id]}">${portrait(h.id) ? `<img src="${portrait(h.id)}" alt="">` : ''}<figcaption><b>${h.name}</b><q>${h.line}</q></figcaption></figure>`).join('')}</div><button class="op-skip">Skip</button>`
+  ov.innerHTML = `<div class="op-title"><small>${m?.[1] === 'ladder' ? 'The Doctrine Ladder' : 'Today on the river'}</small><b>${title}</b></div><div class="op-cards">${houses.map(card).join('')}</div><button class="op-skip">Skip</button>`
   stage.append(ov)
   let skip = () => {}
   ov.querySelector<HTMLButtonElement>('.op-skip')!.onclick = () => skip()
@@ -33,7 +33,7 @@ export async function voice(id: string, houses: House[], COLOR: Record<string, s
     const skipped$ = new Promise<void>(r => (skip = () => { skipped = true; speaking?.pause(); r() }))
     for (const h of houses) {
       if (skipped) break
-      ov.querySelectorAll('figure').forEach(f => f.classList.toggle('now', f.dataset.h === h.id))
+      ov.querySelectorAll<HTMLElement>('.holo').forEach(f => f.classList.toggle('now', f.dataset.h === h.id))
       // a brisk roll-call: each general's card for a moment (their words are on the card); the battle is the show
       const done = new Promise<void>(r => setTimeout(r, 1500))
       await Promise.race([done, skipped$])
