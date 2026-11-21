@@ -4,9 +4,11 @@
 name: nightly
 on:
   schedule: [{ cron: '30 20 * * *' }]
+  push: { branches: [free-hosting] } # TEMP: rehearsal runs while testing; remove before merging
   workflow_dispatch:
     inputs:
       battles: { description: 'War Council battles tonight', default: '2' }
+      rehearsal: { description: 'Rehearsal: four test entries; nothing is pushed or marked played', type: boolean, default: false }
 permissions: { contents: write }
 concurrency: { group: nightly, cancel-in-progress: false }
 jobs:
@@ -39,6 +41,8 @@ jobs:
         run: bash deploy/nightly-actions.sh
         env:
           LADDER_BATTLES: ${{ inputs.battles || '2' }}
+          TEST_QUEUE: ${{ (inputs.rehearsal || github.event_name == 'push') && 'deploy/rehearsal-queue.json' || '' }}
+          PUSH: ${{ (inputs.rehearsal || github.event_name == 'push') && '0' || '1' }}
           LADDER_API: ${{ secrets.LADDER_API }}
           LADDER_TOKEN: ${{ secrets.LADDER_TOKEN }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}

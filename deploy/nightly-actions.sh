@@ -17,9 +17,10 @@ elif [ -n "${GROQ_API_KEY:-}${NVIDIA_API_KEY:-}${OPENROUTER_API_KEY:-}" ]; then
   retry node engine/run.ts --models --rotate "$(( $(date -u +%s) / 86400 ))" --id "$ID" --seed "$(printf %s "$ID" | cksum | cut -d' ' -f1)" || { echo "::error::daily battle failed"; status=1; }
 else echo "::notice::no model keys set (GROQ_API_KEY, NVIDIA_API_KEY, OPENROUTER_API_KEY): skipping the daily battle"; fi
 
-if [ -n "${LADDER_API:-}" ] && [ -n "${LADDER_TOKEN:-}" ]; then
+if [ -n "${TEST_QUEUE:-}" ] || { [ -n "${LADDER_API:-}" ] && [ -n "${LADDER_TOKEN:-}" ]; }; then
   mkdir -p data/ladder
-  if curl -fsS --retry 3 --retry-all-errors -H "authorization: Bearer $LADDER_TOKEN" "$LADDER_API/api/queue" -o data/ladder/queue.json; then
+  # TEST_QUEUE: a rehearsal reads entries from a file instead of the API (and nothing gets marked as played)
+  if { [ -n "${TEST_QUEUE:-}" ] && cp "$TEST_QUEUE" data/ladder/queue.json; } || { [ -z "${TEST_QUEUE:-}" ] && curl -fsS --retry 3 --retry-all-errors -H "authorization: Bearer $LADDER_TOKEN" "$LADDER_API/api/queue" -o data/ladder/queue.json; }; then
     node -e 'const fs=require("fs");const q=JSON.parse(fs.readFileSync("data/ladder/queue.json","utf8"));fs.writeFileSync("data/ladder/queue.jsonl",q.map(e=>JSON.stringify(e)).join("\n")+(q.length?"\n":""));console.log(`war council: ${q.length} queued`)'
     retry node engine/ladder.ts || { echo "::error::war council battles failed"; status=1; }
   else echo "::error::couldn't read the War Council queue from $LADDER_API"; status=1; fi
@@ -34,7 +35,7 @@ if git diff --cached --quiet; then echo "nothing new to publish"
 elif git commit -qm "battle $ID" && { [ "${PUSH:-1}" = 0 ] || git push -q -f origin "battle/$ID"; }; then
   echo "::notice::pushed battle/$ID: merge it to publish"
   # only now mark the entries as played, so a failed push leaves them queued for tomorrow
-  if [ -s data/ladder/used.json ] && [ -n "${LADDER_API:-}" ]; then
+  if [ -s data/ladder/used.json ] && [ -n "${LADDER_API:-}" ] && [ -z "${TEST_QUEUE:-}" ]; then
     curl -fsS --retry 3 --retry-all-errors -X POST -H "authorization: Bearer $LADDER_TOKEN" -H 'content-type: application/json' \
       --data "{\"ids\":$(cat data/ladder/used.json)}" "$LADDER_API/api/consume" >/dev/null || { echo "::error::couldn't mark played entries"; status=1; }
   fi
