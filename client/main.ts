@@ -492,7 +492,7 @@ function predict() {
 if (!picks[id] && t === 0) setPlaying(false) // hold the start so there's time to pick; Play skips it
 document.addEventListener('click', e => {
   const c = (e.target as Element).closest?.<HTMLElement>('.holo')
-  if (!c?.dataset.h || !document.body.classList.contains('can-pick')) return
+  if (!c?.dataset.h || !document.body.classList.contains('can-pick') || c.closest('#opening')) return // the matchup's cards are for reading, not backing
   picks[id] = { pick: c.dataset.h }; savePicks(); predict()
   if (c.closest('#title')) document.querySelector<HTMLElement>('#title [data-a=start]')?.click() // backing from the title starts the battle
   else if (t < 30) setPlaying(true)

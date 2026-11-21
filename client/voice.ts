@@ -23,22 +23,27 @@ export async function voice(id: string, houses: House[], COLOR: Record<string, s
   ov.hidden = true
   const m = id.match(/^(daily|ladder)-(\d{4}-\d{2}-\d{2})(?:-(\d+))?$/)
   const title = m ? `${new Date(m[2] + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}${m[1] === 'ladder' ? ` · ladder battle ${m[3]}` : ''}` : /^grey-(\d+)$/.test(id) ? `Rehearsal battle ${id.split('-')[1]}` : id.replace(/-/g, ' ')
-  ov.innerHTML = `<div class="op-title"><small>${m?.[1] === 'ladder' ? 'From the War Council' : 'Today on the river'}</small><b>${title}</b></div><div class="op-cards">${houses.map(card).join('')}</div><button class="op-skip">Skip</button>`
+  ov.innerHTML = `<div class="op-title"><small>${m?.[1] === 'ladder' ? 'From the War Council' : 'Today on the river'}</small><b>${title}</b></div><div class="op-cards">${houses.map(card).join('<i class="op-vs" aria-hidden="true">vs</i>')}</div><p class="op-hint">Choose a general to meet them</p><button class="op-go">[ Enter the battle ]</button>`
   stage.append(ov)
-  let skip = () => {}
-  ov.querySelector<HTMLButtonElement>('.op-skip')!.onclick = () => skip()
+  let go = () => {}
+  ov.querySelector<HTMLButtonElement>('.op-go')!.onclick = () => go()
   let busy = false
+  // the matchup: the four generals face off; picking one brings it forward with who commands it. Nothing starts until Enter.
   async function opening() {
     ov.hidden = false; busy = true
-    let skipped = false
-    const skipped$ = new Promise<void>(r => (skip = () => { skipped = true; speaking?.pause(); r() }))
-    for (const h of houses) {
-      if (skipped) break
-      ov.querySelectorAll<HTMLElement>('.holo').forEach(f => f.classList.toggle('now', f.dataset.h === h.id)); emote(h.id, 'hello')
-      // the roll-call is the cards' moment: each general comes forward, large, in turn
-      const done = new Promise<void>(r => setTimeout(r, 2600))
-      await Promise.race([done, skipped$])
+    const cards = [...ov.querySelectorAll<HTMLElement>('.holo')]
+    const show = (h?: string) => {
+      cards.forEach(f => { f.classList.toggle('now', f.dataset.h === h); f.setAttribute('aria-pressed', String(f.dataset.h === h)) })
+      ov.classList.toggle('picked', !!h)
+      if (h) emote(h, 'hello')
     }
+    show()
+    for (const f of cards) {
+      f.setAttribute('role', 'button')
+      f.onclick = () => show(f.classList.contains('now') ? undefined : f.dataset.h)
+      f.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); f.click() } }
+    }
+    await new Promise<void>(r => (go = r))
     ov.classList.add('out')
     await new Promise(r => setTimeout(r, 340))
     ov.hidden = true; ov.classList.remove('out'); busy = false
