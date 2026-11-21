@@ -6,6 +6,7 @@ import { story } from './story.ts'
 import { soundscape } from './sound.ts'
 import { holoCard, holoTilt } from './cards.ts'
 import { holo3d, emote } from './holo3d.ts'
+import { rules, leaderboard } from './sections.ts'
 import { clouds } from './hero.ts'
 
 const COLOR: Record<string, string> = { rhino: '#34418f', kite: '#b3242f', orchid: '#b13f9a', tiger: '#e3a812' }
@@ -15,7 +16,8 @@ const params = new URLSearchParams(location.search)
 const index: { id: string; winner: string }[] = await (await fetch('replay/index.json')).json()
 // #<battle>@<tick> is a link to one moment (artifact URLs keep only the hash)
 const [hashId, hashT] = location.hash.slice(1).split('@')
-const id = index.find(b => b.id === hashId)?.id ?? index[0].id
+const today = (index.filter(b => b.id.startsWith('daily-')).at(-1) ?? index[0]).id // the index runs oldest first: land on the newest daily battle
+const id = index.find(b => b.id === hashId)?.id ?? today
 const get = (f: string) => fetch(`replay/${id}/${f}`).then(r => r.json())
 const [manifest, init] = await Promise.all([get('manifest.json'), get('init.json')])
 const TPW: number = init.ticksPerWatch, FE: number = init.frameEvery, TOTAL = manifest.watches * TPW
@@ -102,6 +104,11 @@ const card = (h: any, size: 'big' | 'mini') => holoCard(h, { color: COLOR[h.id],
 const emblem = (h: string) => A(`emblem-${h}`) ? `<span class="emb" style="--c:${COLOR[h]};--m:url(${A(`emblem-${h}`)})"></span>` : `<span class="sw" style="background:${COLOR[h]}"></span>`
 const lad = ladder(COLOR, Object.fromEntries(init.houses.map((h: any) => [h.id, h.name])), h => A(`portrait-${h}`) ?? '')
 $('ladder-open').onclick = () => lad.open()
+// the rules and leaderboard pages; "watch today's battle" from either starts it here, or loads it if this is another battle
+const pages = {
+  COLOR, names: Object.fromEntries(init.houses.map((h: any) => [h.id, h.name])), current: id, today, council: () => lad.open(),
+  start: () => { if (id !== today) { location.hash = today; location.reload() } else document.querySelector<HTMLElement>('#title [data-a=start]')?.click() },
+}
 // ---- title screen: only on a fresh visit to the start of a battle (a shared moment link skips it)
 if (!hashT && params.get('ladder') === null) {
   document.body.classList.add('intro') // title, premise and roll-call own the screen; the controls arrive with the battle
@@ -109,23 +116,16 @@ if (!hashT && params.get('ladder') === null) {
   ts.innerHTML = `<div class="tt-in"><h1>Harkara</h1>
     <p class="tt-def"><span lang="hi">हरकारा</span><em>noun</em> the king’s runner: the messenger who carried the court’s letters across the empire, through any danger.</p>
     <p>Four AI generals fight for three river crossings, and none of them can see the field. Every order is carried by a rider who can be caught, shot or lost, and every captured letter can be read.</p>
-    <div class="tt-btns"><button data-a="rules">The rules</button><button data-a="start" class="tt-go">Watch today’s battle</button><button data-a="ladder">War Council</button></div>
+    <div class="tt-btns"><button data-a="rules">The rules</button><button data-a="start" class="tt-go">Watch today’s battle</button><button data-a="board">Leaderboard</button></div>
     ${init.houses.every((h: any) => h.model === 'scripted') ? '<p class="tt-note">A rehearsal battle fought by simple code generals. The daily AI battles start at launch.</p>' : ''}</div>
     <div class="shrine3" aria-hidden="true"><div class="slot"></div></div>
     <nav class="tt-corners"><button data-a="rules">[ About ]</button><button data-a="sound">[ Sound ]</button><a href="https://github.com/Yasharma117/harkara" target="_blank" rel="noopener">[ Source ]</a></nav>
-    <div class="tt-rules" hidden><h2>The rules</h2><ol>
-    <li><b>To win,</b> hold two of the three river crossings when the battle ends. Whoever has the most soldiers on a crossing holds it. If nobody holds two, the most points wins: 100 for each crossing held, 1 for each soldier still standing.</li>
-    <li><b>The generals are blind.</b> They only know what their riders tell them, and the news is always late.</li>
-    <li><b>Every order is a rider.</b> Riders can be caught, shot, or lost in the mist.</li>
-    <li><b>Caught letters get read.</b> Plain letters at once. Coded letters slowly, a few letters at a time.</li>
-    <li><b>Tricks:</b> fake letters meant to be caught, two riders on two roads, smoke signals, truces.</li>
-    <li><b>You</b> back a general before watch 10 by clicking their card, read every letter in the Mailbag, and in the <b>War Council</b> hand a general three tactics for tonight’s battle.</li></ol><button data-a="back">Back</button></div>`
+`
   $('stage').append(ts); clouds(ts)
   ts.onclick = e => {
     const a = (e.target as HTMLElement).dataset.a
-    if (a === 'rules') { ts.querySelector<HTMLElement>('.tt-rules')!.hidden = false; ts.querySelector<HTMLElement>('.tt-in')!.hidden = true }
-    if (a === 'back') { ts.querySelector<HTMLElement>('.tt-rules')!.hidden = true; ts.querySelector<HTMLElement>('.tt-in')!.hidden = false }
-    if (a === 'ladder') lad.open()
+    if (a === 'rules') rules(pages)
+    if (a === 'board') leaderboard(pages)
     if (a === 'sound') vo?.button.click()
     if (a === 'start') { ts.classList.add('out'); setTimeout(() => ts.remove(), 460); setPlaying(true) }
   }
