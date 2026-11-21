@@ -1,0 +1,52 @@
+# Every night at 02:00 IST: today's battle with the model generals, then the War Council on a local model.
+# Free on a public repo. Results go to a battle/<date> branch; merge it and Cloudflare Pages redeploys the site.
+# Secrets (Settings → Secrets and variables → Actions): LADDER_API, LADDER_TOKEN, and any of GROQ_API_KEY, NVIDIA_API_KEY, OPENROUTER_API_KEY.
+name: nightly
+on:
+  schedule: [{ cron: '30 20 * * *' }]
+  workflow_dispatch:
+    inputs:
+      battles: { description: 'War Council battles tonight', default: '2' }
+      rehearsal: { description: 'Rehearsal: four test entries; nothing is pushed or marked played', type: boolean, default: false }
+permissions: { contents: write }
+concurrency: { group: nightly, cancel-in-progress: false }
+jobs:
+  battle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    env:
+      LLAMA: b12600 # llama.cpp release, pinned so a new build can't break a night
+      MODEL_URL: https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_0.gguf
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci --ignore-scripts
+      - uses: actions/cache@v4
+        with: { path: ~/llm, key: 'llm-${{ env.LLAMA }}-gemma-4-E4B-it-Q4_0' }
+      - name: Start the local model (same model for every house in a War Council battle)
+        run: |
+          mkdir -p ~/llm/bin
+          if [ ! -x ~/llm/bin/llama-server ]; then
+            curl -fsSL --retry 3 "https://github.com/ggml-org/llama.cpp/releases/download/$LLAMA/llama-$LLAMA-bin-ubuntu-x64.tar.gz" | tar xz -C ~/llm
+            cp -r "$(dirname "$(find ~/llm -name llama-server -type f | head -1)")"/. ~/llm/bin/
+          fi
+          [ -s ~/llm/ladder.gguf ] || curl -fsSL --retry 3 -o ~/llm/ladder.gguf "$MODEL_URL"
+          export LD_LIBRARY_PATH=~/llm/bin
+          nohup ~/llm/bin/llama-server -m ~/llm/ladder.gguf --host 127.0.0.1 --port 8080 -c 32768 -np 4 --jinja --reasoning off -t 4 > ~/llm/server.log 2>&1 &
+          for i in $(seq 1 90); do curl -fs http://127.0.0.1:8080/health >/dev/null && echo "model ready" && exit 0; sleep 2; done
+          cat ~/llm/server.log; exit 1
+      - name: Battle
+        run: bash deploy/nightly-actions.sh
+        env:
+          LADDER_BATTLES: ${{ inputs.battles || '2' }}
+          TEST_QUEUE: ${{ inputs.rehearsal && 'deploy/rehearsal-queue.json' || '' }}
+          PUSH: ${{ inputs.rehearsal && '0' || '1' }}
+          LADDER_API: ${{ secrets.LADDER_API }}
+          LADDER_TOKEN: ${{ secrets.LADDER_TOKEN }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      - name: Model server log
+        if: failure()
+        run: tail -50 ~/llm/server.log

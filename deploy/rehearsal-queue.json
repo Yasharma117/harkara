@@ -1,0 +1,34 @@
+[
+ {
+  "id": "rehearsal-rhino",
+  "house": "rhino",
+  "by": "rehearsal (test)",
+  "text": "Tactics: Code every letter; Never let go; Take the middle crossing. Send every order in cipher, never plain. Once you hold a ford, never leave it; defend it with foot and elephants. Take the middle ford in the first five watches and hold it.",
+  "at": "2026-11-21T10:00:00+05:30",
+  "visitor": ""
+ },
+ {
+  "id": "rehearsal-kite",
+  "house": "kite",
+  "by": "rehearsal (test)",
+  "text": "Tactics: Speed over secrecy; Hunt their riders; Take the east crossing. Send orders plain so they leave at once. Use your horse to catch enemy riders on the roads rather than to fight. Take the east ford in the first five watches and hold it.",
+  "at": "2026-11-21T10:01:00+05:30",
+  "visitor": ""
+ },
+ {
+  "id": "rehearsal-orchid",
+  "house": "orchid",
+  "by": "rehearsal (test)",
+  "text": "Tactics: Send decoys; Act on their mail; Make a friend. Before each real attack, send a decoy letter naming a false target, meant to be caught. Act on every enemy letter you capture: be where it says they are going, first. Offer a truce to one rival early, and fight the others.",
+  "at": "2026-11-21T10:02:00+05:30",
+  "visitor": ""
+ },
+ {
+  "id": "rehearsal-tiger",
+  "house": "tiger",
+  "by": "rehearsal (test)",
+  "text": "Tactics: Two riders; Last-watch charge; Take the west crossing. Send every important order by two riders on two different roads. Save smoke signals for an all-out move in the last three watches. Take the west ford in the first five watches and hold it.",
+  "at": "2026-11-21T10:03:00+05:30",
+  "visitor": ""
+ }
+]
