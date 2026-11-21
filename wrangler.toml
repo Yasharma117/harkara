@@ -6,4 +6,4 @@ compatibility_date = "2026-11-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "harkara"
-database_id = "00000000-0000-0000-0000-000000000000" # replaced by the real id after `wrangler d1 create harkara`
+database_id = "ef549b96-e5c9-4be2-b8c7-52c2129d9e3c"
