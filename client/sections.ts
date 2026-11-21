@@ -8,6 +8,8 @@ const HOUSES = ['rhino', 'kite', 'orchid', 'tiger']
 const still = matchMedia('(prefers-reduced-motion: reduce)').matches
 const cap = (s: string) => s[0].toUpperCase() + s.slice(1)
 const esc = (s: string) => s.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`)
+// a card thumbnail with this battle's general's name in its top plate (names change nightly, so it's live text, not baked)
+const thumb = (ctx: Ctx, h: string) => `<span class="th"><img src="art/cards/${h}-thumb.webp" alt=""><b aria-hidden="true">${esc(ctx.names[h] ?? cap(h))}</b></span>`
 const wait = (ms: number) => new Promise(r => setTimeout(r, still ? 0 : ms))
 
 function page(cls: string, ctx: Ctx, body: string) {
@@ -46,7 +48,7 @@ type Step = { say: string; show: (box: HTMLElement, ctx: Ctx) => void | Promise<
 const fordDots = (lit: number[] = []) => [200, 500, 800].map((x, i) => `<i class="ex-ford${lit.includes(i) ? ' lit' : ''}" style="left:${x / 10}%;--d:${i * 140}ms"><b>${['West', 'Middle', 'East'][i]}</b></i>`).join('')
 const map = (lit?: number[], extra = '') => `<div class="ex-map"><img src="art/map-painted.webp" alt="">${fordDots(lit)}${extra}</div>`
 const letter = (body: string, cls = '') => `<div class="ex-letter ${cls}"><small>Order · sealed</small><p class="ex-ink"></p>${body}</div>`
-const thumbs = (ctx: Ctx, sub: (h: string) => string) => `<div class="ex-thumbs">${HOUSES.map((h, i) => `<figure style="--c:${ctx.COLOR[h]};--d:${i * 90}ms"><img src="art/cards/${h}-thumb.webp" alt=""><figcaption>${esc(ctx.names[h] ?? cap(h))}<small>${sub(h)}</small></figcaption></figure>`).join('')}</div>`
+const thumbs = (ctx: Ctx, sub: (h: string) => string) => `<div class="ex-thumbs">${HOUSES.map((h, i) => `<figure style="--c:${ctx.COLOR[h]};--d:${i * 90}ms">${thumb(ctx, h)}<figcaption>${esc(ctx.names[h] ?? cap(h))}<small>${sub(h)}</small></figcaption></figure>`).join('')}</div>`
 
 const CHAPTERS: { title: string; steps: Step[] }[] = [
   { title: 'The river', steps: [
@@ -170,7 +172,7 @@ export async function leaderboard(ctx: Ctx) {
   counted.slice(-90).forEach((b, i) => { tally[b.winner] && tally[b.winner].wins++; const s = ends[i]?.scores; if (s) for (const h of HOUSES) tally[h].pts += s[h] ?? 0 })
   const rank = [...HOUSES].sort((a, b) => tally[b].wins - tally[a].wins || tally[b].pts - tally[a].pts)
   el.querySelector('.lb-sub')!.textContent = `${daily.length ? 'Daily battles' : 'Rehearsal battles'} · ${counted.length} recorded`
-  el.querySelector('.lb-stairs')!.innerHTML = rank.map((h, i) => `<figure style="--c:${ctx.COLOR[h]};--i:${i}"><span class="lb-n">${String(i + 1).padStart(2, '0')}</span><img src="art/cards/${h}-thumb.webp" alt=""><figcaption><b>${esc(ctx.names[h] ?? cap(h))}</b><small><span data-n="${tally[h].wins}">0</span> ${tally[h].wins === 1 ? 'win' : 'wins'} · <span data-n="${tally[h].pts}">0</span> pts</small></figcaption></figure>`).join('')
+  el.querySelector('.lb-stairs')!.innerHTML = rank.map((h, i) => `<figure style="--c:${ctx.COLOR[h]};--i:${i}"><span class="lb-n">${String(i + 1).padStart(2, '0')}</span>${thumb(ctx, h)}<figcaption><b>${esc(ctx.names[h] ?? cap(h))}</b><small><span data-n="${tally[h].wins}">0</span> ${tally[h].wins === 1 ? 'win' : 'wins'} · <span data-n="${tally[h].pts}">0</span> pts</small></figcaption></figure>`).join('')
   el.querySelector('.lb-note')!.innerHTML = `Ranked by wins, then total battle points.${today && !picks[today]?.at ? ' Today’s battle joins the board once you’ve watched it.' : ''}`
   countUp(el.querySelector('.lb-stairs')!)
 
@@ -182,7 +184,7 @@ export async function leaderboard(ctx: Ctx) {
     const right = done.filter(([, x]) => x.right).length
     const head = !today ? '<p>No battle to call yet.</p>'
       : mine?.at ? `<p>${label(today)}: you backed <b style="color:${ctx.COLOR[mine.pick]}">${cap(mine.pick)}</b>, and you were <b>${mine.right ? 'right' : 'wrong'}</b>.</p>`
-      : `<p>${mine ? 'Change your call any time before you watch.' : `Who wins ${label(today)}? Back one general, then watch.`}</p><div class="lb-pick">${HOUSES.map(h => `<button data-pick="${h}" style="--c:${ctx.COLOR[h]}" aria-pressed="${mine?.pick === h}"><img src="art/cards/${h}-thumb.webp" alt=""><span>${esc(ctx.names[h] ?? cap(h))}</span></button>`).join('')}</div>`
+      : `<p>${mine ? 'Change your call any time before you watch.' : `Who wins ${label(today)}? Back one general, then watch.`}</p><div class="lb-pick">${HOUSES.map(h => `<button data-pick="${h}" style="--c:${ctx.COLOR[h]}" aria-pressed="${mine?.pick === h}">${thumb(ctx, h)}<span>${esc(ctx.names[h] ?? cap(h))}</span></button>`).join('')}</div>`
     el.querySelector('.lb-call-in')!.innerHTML = `${head}<div class="lb-rec"><span><b data-n="${right}">0</b> right of <b data-n="${done.length}">0</b></span><span>Streak <b data-n="${streak}">0</b></span></div>${done.length ? `<ol class="lb-hist">${done.slice(0, 6).map(([bid, x], i) => `<li style="--i:${i}"><span>${label(bid)}</span><b style="color:${ctx.COLOR[x.pick]}">${cap(x.pick)}</b><i>${x.right ? '✓' : '✗'}</i></li>`).join('')}</ol>` : ''}`
     countUp(el.querySelector('.lb-rec')!)
   }

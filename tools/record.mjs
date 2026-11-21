@@ -30,7 +30,10 @@ ws.onmessage = m => {
   }
 }
 await cmd('Runtime.enable'); await cmd('Network.enable')
-await cmd('Emulation.setDeviceMetricsOverride', { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false })
+// VIEW=390x844 emulates a phone (touch, mobile viewport); default is a 1400×900 desktop
+const [vw, vh] = (process.env.VIEW ?? '1400x900').split('x').map(Number), phone = vw < 800
+await cmd('Emulation.setDeviceMetricsOverride', { width: vw, height: vh, deviceScaleFactor: phone ? 2 : 1, mobile: phone })
+if (phone) await cmd('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 })
 await cmd('Page.navigate', { url })
 await new Promise(r => setTimeout(r, 4000))
 const ev = e => cmd('Runtime.evaluate', { expression: e, returnByValue: true, awaitPromise: true }).then(r => r.result?.value)
