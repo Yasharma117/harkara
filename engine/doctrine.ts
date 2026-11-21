@@ -1,4 +1,4 @@
-// Doctrine entries: the only thing viewers write. Checked here, used by the API (server/ladder.ts) and the
+// Doctrine entries: built from tactic cards (engine/tactics.ts) and checked here, used by the API (functions/api) and the
 // nightly ladder (engine/ladder.ts). A doctrine only ever reaches its own house's general (see sim.ts view()).
 import { HOUSES, type HouseId } from './map.ts'
 

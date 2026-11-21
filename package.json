@@ -6,7 +6,6 @@
   "scripts": {
     "test": "node --test engine/*.test.ts",
     "ladder": "node --env-file-if-exists=.env engine/ladder.ts",
-    "api": "node --env-file-if-exists=.env server/ladder.ts",
     "battle": "node engine/run.ts",
     "dev": "vite client",
     "build": "vite build client --target esnext --base ./",

@@ -1,28 +1,12 @@
 // The War Council (formerly the Doctrine Ladder): pick a general, pick three tactic cards, send. Tonight that house fights
 // a ladder battle on the shared free model with your three tactics as its standing orders; results post next morning.
-// The cards become the doctrine text the API and engine already take ({house, text, by} → engine/ladder.ts), so nothing
-// server-side changed. Results ship with the site as replay/ladder.json.
+// The page sends only {house, cards, by}; the API turns the cards into the doctrine text (engine/tactics.ts).
+// Results ship with the site as replay/ladder.json.
 const API: string = (import.meta as any).env?.VITE_LADDER_API ?? ''
 const esc = (s: string) => s.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`)
 const cap = (s: string) => s[0].toUpperCase() + s.slice(1)
 
-// what the viewer sees (title, line) and what the general is told (order). Orders say "ford": that is the word on the
-// generals' own map. Cards in the same group exclude each other.
-const DECK: { id: string; glyph: string; title: string; line: string; order: string; group?: string }[] = [
-  { id: 'code', glyph: '✉', title: 'Code every letter', line: 'Slow to send, slow to read', order: 'Send every order in cipher, never plain.', group: 'cipher' },
-  { id: 'plain', glyph: '➶', title: 'Speed over secrecy', line: 'Plain letters leave at once', order: 'Send orders plain so they leave at once.', group: 'cipher' },
-  { id: 'decoy', glyph: '◇', title: 'Send decoys', line: 'A false letter, meant to be caught', order: 'Before each real attack, send a decoy letter naming a false target, meant to be caught.' },
-  { id: 'twin', glyph: '⇉', title: 'Two riders', line: 'Big orders go by two roads', order: 'Send every important order by two riders on two different roads.' },
-  { id: 'hunt', glyph: '⚔', title: 'Hunt their riders', line: 'Horse patrols the roads', order: 'Use your horse to catch enemy riders on the roads rather than to fight.' },
-  { id: 'read', glyph: '◉', title: 'Act on their mail', line: 'Meet them where they said', order: 'Act on every enemy letter you capture: be where it says they are going, first.' },
-  { id: 'west', glyph: '◀', title: 'Take the west crossing', line: 'Early, with everything', order: 'Take the west ford in the first five watches and hold it.', group: 'aim' },
-  { id: 'middle', glyph: '◆', title: 'Take the middle crossing', line: 'Early, with everything', order: 'Take the middle ford in the first five watches and hold it.', group: 'aim' },
-  { id: 'east', glyph: '▶', title: 'Take the east crossing', line: 'Early, with everything', order: 'Take the east ford in the first five watches and hold it.', group: 'aim' },
-  { id: 'hold', glyph: '▣', title: 'Never let go', line: 'What you hold, you keep', order: 'Once you hold a ford, never leave it; defend it with foot and elephants.' },
-  { id: 'truce', glyph: '☍', title: 'Make a friend', line: 'A truce, then turn on the rest', order: 'Offer a truce to one rival early, and fight the others.' },
-  { id: 'smoke', glyph: '♨', title: 'Last-watch charge', line: 'Smoke, then everything moves', order: 'Save smoke signals for an all-out move in the last three watches.' },
-]
-const PICK = 3
+import { DECK, PICK } from '../engine/tactics.ts' // what the viewer sees and what the general is told
 
 export function ladder(COLOR: Record<string, string>, names: Record<string, string>, portrait: (h: string) => string) {
   const d = document.createElement('dialog')
@@ -30,7 +14,7 @@ export function ladder(COLOR: Record<string, string>, names: Record<string, stri
   d.innerHTML = `
     <form method="dialog" class="close"><button aria-label="Close">✕</button></form>
     <h2>War Council</h2>
-    <p class="lede">Give one general your three best tactics. Tonight it fights with them against three rivals on the same AI, so only the tactics differ. Results post tomorrow morning.</p>
+    <p class="lede">Give one general your three best tactics. Each night the council draws orders by lot, and those generals fight with them against three rivals on the same AI, so only the tactics differ. Results post the next morning.</p>
     <form id="ld-form">
       <h3><span>1</span> Choose a general</h3>
       <fieldset class="houses">${Object.keys(COLOR).map((h, i) => `<label style="--c:${COLOR[h]}"><input type="radio" name="house" value="${h}" ${i ? '' : 'checked'}><img src="${portrait(h)}" alt=""><span>${esc(names[h] ?? cap(h))}</span></label>`).join('')}</fieldset>
@@ -61,13 +45,12 @@ export function ladder(COLOR: Record<string, string>, names: Record<string, stri
   if (!API) { send.textContent = 'Opens at launch'; msg.textContent = 'You can try the cards now; sending opens at launch. Below are the rehearsal nights.' }
   form.onsubmit = async e => {
     e.preventDefault()
-    const f = new FormData(form), cards = chosen.map(i => DECK.find(c => c.id === i)!)
-    const text = `Tactics: ${cards.map(c => c.title).join('; ')}. ${cards.map(c => c.order).join(' ')}` // the "Tactics:" line lets results show the cards again
+    const f = new FormData(form)
     send.disabled = true; msg.textContent = 'Sending your rider…'
     try {
-      const r = await fetch(`${API}/api/doctrine`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ house: f.get('house'), text, by: f.get('by') }) })
+      const r = await fetch(`${API}/api/doctrine`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ house: f.get('house'), cards: chosen, by: f.get('by') }) })
       const j = await r.json().catch(() => ({}))
-      msg.textContent = r.ok ? `Sent. ${cap(j.house)} fights with your tactics tonight; results post tomorrow morning.` : (j.error ?? `The server said ${r.status}.`)
+      msg.textContent = r.ok ? `Sent. Your orders for ${cap(j.house)} are in tonight’s draw; results post tomorrow morning.` : (j.error ?? `The server said ${r.status}.`)
       if (r.ok) { chosen.length = 0; sync(); tonight() } else send.disabled = false
     } catch { msg.textContent = 'The council’s server didn’t answer. Try again in a minute.'; send.disabled = false }
   }
@@ -77,7 +60,7 @@ export function ladder(COLOR: Record<string, string>, names: Record<string, stri
     try {
       const j = await (await fetch(`${API}/api/ladder`)).json()
       const n = Object.values(j.entries as Record<string, number>).reduce((a, b) => a + b, 0)
-      el.innerHTML = n ? `${n} set${n > 1 ? 's' : ''} of orders in: ${Object.entries(j.entries).map(([h, c]) => `<b style="color:${COLOR[h]}">${cap(h)}</b> ${c}`).join(' · ')}. They stay sealed until the battle.` : 'No orders yet tonight. Be the first.'
+      el.innerHTML = n ? `${n} set${n > 1 ? 's' : ''} of orders in: ${Object.entries(j.entries).map(([h, c]) => `<b style="color:${COLOR[h]}">${cap(h)}</b> ${c}`).join(' · ')}. They stay sealed until the draw.` : 'No orders yet tonight. Be the first.'
     } catch { el.textContent = 'Couldn’t reach the council’s server.' }
   }
   // an entry made from cards shows its cards; an older free-text doctrine shows as a quote

@@ -19,6 +19,7 @@ jobs:
       MODEL_URL: https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_0.gguf
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 } # full history: tonight's branch builds on any unmerged battle branch
       - uses: actions/setup-node@v4
         with: { node-version: 24, cache: npm }
       - run: npm ci --ignore-scripts
