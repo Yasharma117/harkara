@@ -1,0 +1,9 @@
+# Cloudflare Pages: the static site (client/dist) plus the War Council API (functions/api). Free tier, no card.
+name = "harkara"
+pages_build_output_dir = "client/dist"
+compatibility_date = "2026-11-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "harkara"
+database_id = "00000000-0000-0000-0000-000000000000" # replaced by the real id after `wrangler d1 create harkara`
