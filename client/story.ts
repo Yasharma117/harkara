@@ -14,17 +14,18 @@ export function story(events: Ev[], letters: Map<string, Ev>, COLOR: Record<stri
   intro.id = 'premise'
   intro.innerHTML = `<div class="pm-in">
     <small>Harkara · the messenger</small>
-    <h2>Four AI generals. One river. Three fords.</h2>
-    <p>${rehearsal ? 'In the daily battles each house is commanded by a different AI model; this rehearsal uses simple code generals.' : 'Each house is commanded by a different AI model.'} Hold two fords when the last watch ends and you win.</p>
+    <h2>Four AI generals. One river. Three crossings.</h2>
+    <p>${rehearsal ? 'In the daily battles each house is commanded by a different AI model; this rehearsal uses simple code generals.' : 'Each house is commanded by a different AI model.'} Hold two of the river crossings when the battle ends, and you win.</p>
     <p>The battle lasts <b>30 watches</b>. Each watch, every general reads the reports that reached it and sends new orders.</p>
     <p><b>No general can see the battlefield.</b> Every order rides out on horseback, and every report rides back hours late. Riders can be <b>caught</b>, <b>shot</b> or <b>lost in the mist</b>, and a captured letter can be decoded, letter by letter, until the enemy is reading your plans.</p>
     <p class="pm-hint">Watch the gap between what each general believes and what is really happening.</p>
+    <p class="pm-go">Click anywhere to continue</p>
   </div>`
   intro.hidden = true
   stage.append(intro)
   const premise = () => new Promise<void>(r => {
     intro.hidden = false
-    const done = () => { intro.classList.add('out'); r(); setTimeout(() => { intro.hidden = true; intro.classList.remove('out') }, 450) } // the next scene rises beneath the fade: no flash of the map
+    const done = () => { intro.classList.add('out'); r(); setTimeout(() => { intro.hidden = true; intro.classList.remove('out') }, 340) } // the next scene rises beneath the fade: no flash of the map
     const tm = setTimeout(done, 7500)
     intro.onclick = () => { clearTimeout(tm); done() }
   })

@@ -5,6 +5,7 @@ import { voice } from './voice.ts'
 import { story } from './story.ts'
 import { soundscape } from './sound.ts'
 import { holoCard, holoTilt } from './cards.ts'
+import { holo3d, emote } from './holo3d.ts'
 import { clouds } from './hero.ts'
 
 const COLOR: Record<string, string> = { rhino: '#34418f', kite: '#b3242f', orchid: '#b13f9a', tiger: '#e3a812' }
@@ -18,6 +19,14 @@ const id = index.find(b => b.id === hashId)?.id ?? index[0].id
 const get = (f: string) => fetch(`replay/${id}/${f}`).then(r => r.json())
 const [manifest, init] = await Promise.all([get('manifest.json'), get('init.json')])
 const TPW: number = init.ticksPerWatch, FE: number = init.frameEvery, TOTAL = manifest.watches * TPW
+// viewers read "crossing", not "ford": the engine, replays and letters keep the old word, so it is swapped where text meets the
+// screen: node names here (canvas labels on both maps), and every text node the page renders (below)
+const crossing = (s: string) => s.replace(/\b(FORD|Ford|ford)(S|s)?\b/g, (_, w: string, pl = '') => ({ FORD: 'CROSSING', Ford: 'Crossing', ford: 'crossing' } as Record<string, string>)[w] + pl)
+for (const n of init.map.nodes) n.name = crossing(n.name)
+new MutationObserver(ms => { for (const m of ms) for (const n of m.type === 'characterData' ? [m.target] : m.addedNodes) {
+  const w = document.createTreeWalker(n, NodeFilter.SHOW_TEXT); let t: Node | null = n.nodeType === 3 ? n : w.nextNode()
+  for (; t; t = w.nextNode()) { const v = crossing(t.nodeValue ?? ''); if (v !== t.nodeValue) t.nodeValue = v }
+} }).observe(document.body, { childList: true, subtree: true, characterData: true })
 const nodes = new Map<string, any>(init.map.nodes.map((n: any) => [n.id, n]))
 const squadInfo: any[] = init.squads
 const watches: WatchFile[] = [], events: Ev[] = [], frames: WatchFile['frames'] = []
@@ -28,7 +37,7 @@ let end: any = null
 
 // ---- controls
 let t = Number(hashT ?? params.get('t') ?? 0), playing = !hashT, speed = 4, beliefOf: string | null = null
-const battleName = (b: string) => { const g = b.match(/^grey-(\d+)$/), l = b.match(/^(daily|ladder)-\d{4}-(\d{2})-(\d{2})(?:-(\d+))?$/); return g ? `Rehearsal ${g[1]}` : l ? `${l[1] === 'ladder' ? 'Ladder' : 'Daily'} · ${Number(l[3])}/${Number(l[2])}${l[4] ? ` · ${l[4]}` : ''}` : b }
+const battleName = (b: string) => { const g = b.match(/^grey-(\d+)$/), l = b.match(/^(daily|ladder)-\d{4}-(\d{2})-(\d{2})(?:-(\d+))?$/); return g ? `Rehearsal ${g[1]}` : l ? `${l[1] === 'ladder' ? 'Council' : 'Daily'} · ${Number(l[3])}/${Number(l[2])}${l[4] ? ` · ${l[4]}` : ''}` : b }
 for (const b of index) $('battle').append(new Option(battleName(b.id), b.id, false, b.id === id)) // no winner here: it would spoil Predict
 $('battle').onchange = e => { location.hash = (e.target as HTMLSelectElement).value; location.reload() }
 const playBtn = $('play')
@@ -51,7 +60,7 @@ const group = (el: string, opts: [string, string | number | null][], pick: (v: a
   }
 }
 let dio: Awaited<ReturnType<typeof import('./diorama.ts').createDiorama>> | null = null, view: 'map' | 'diorama' = 'diorama'
-group('views', [['Map', 'map'], ['Diorama', 'diorama']], async v => {
+group('views', [['Map', 'map'], ['3D', 'diorama']], async v => {
   if (v === 'diorama' && !dio) dio = await (await import('./diorama.ts')).createDiorama($('stage'), init)
   view = v
   cv.style.display = v === 'map' ? '' : 'none'
@@ -61,7 +70,9 @@ group('views', [['Map', 'map'], ['Diorama', 'diorama']], async v => {
 if (params.get('view') === 'map') ($('views').firstElementChild as HTMLButtonElement).click() // the 3D field is the show; ?view=map for the plain map
 else { view = 'map'; ($('views').lastElementChild as HTMLButtonElement).click() }
 group('speeds', [['2×', 2], ['4×', 4], ['8×', 8]], v => (speed = v), speed)
-group('beliefs', [['Truth', null], ...HOUSES.map(h => [h[0].toUpperCase() + h.slice(1), h] as [string, string])], v => { beliefOf = v }, null)
+group('beliefs', [['Real', null], ...HOUSES.map(h => [h[0].toUpperCase() + h.slice(1), h] as [string, string])], v => { beliefOf = v }, null)
+// "whose view": each general's button wears its colour and says what it does
+$('beliefs').querySelectorAll('button').forEach((b, i) => { const h = HOUSES[i - 1]; b.title = h ? `See the field as ${h[0].toUpperCase() + h.slice(1)} believes it is. Faint ghosts mark where it thinks the armies are.` : 'See the field as it really is'; if (h) b.style.setProperty('--c', COLOR[h]) })
 $('beliefs').addEventListener('click', e => { if (e.isTrusted) autoBelief = false }) // the viewer's own choice wins over the director's
 const scrub = $('scrub') as HTMLInputElement
 scrub.max = String(TOTAL) // the end event lands on tick TOTAL
@@ -80,7 +91,7 @@ addEventListener('hashchange', () => {
   const [h, ht] = location.hash.slice(1).split('@')
   if (h !== id) location.reload(); else if (ht) { t = Number(ht); setPlaying(false) }
 })
-let tab = 'feed', sel: string | null = null, allFeed = false
+let tab = 'feed', sel: string | null = null, allFeed = false, feedTop = ''
 group('tabs', [['Headlines', 'feed'], ['All dispatches', 'all'], ['Mailbag', 'mail']], v => { tab = v === 'all' ? 'feed' : v; allFeed = v === 'all'; $('feed').hidden = tab !== 'feed'; $('mail').hidden = tab !== 'mail'; shown = -1 }, tab)
 document.onkeydown = e => { if (e.code === 'Space' && e.target === document.body) { e.preventDefault(); setPlaying(!playing) } }
 // batch-3 art when present (npm run assets); flat swatches otherwise
@@ -95,26 +106,28 @@ $('ladder-open').onclick = () => lad.open()
 if (!hashT && params.get('ladder') === null) {
   document.body.classList.add('intro') // title, premise and roll-call own the screen; the controls arrive with the battle
   const ts = document.createElement('div'); ts.id = 'title'
-  ts.innerHTML = `<div class="tt-in"><div class="tt-deva" lang="hi">हरकारा</div><h1>HARKARA</h1>
-    <p>Four AI models command four houses in a river war. None of them can see the battlefield: every order is carried by a rider who can be caught, shot or lost, and every captured letter can be read.</p>
-    <div class="tt-btns"><button data-a="rules">The rules</button><button data-a="start" class="tt-go">Watch today’s battle</button><button data-a="ladder">Doctrine Ladder</button></div>
-    ${init.houses.every((h: any) => h.model === 'scripted') ? '<p class="tt-note">This is a rehearsal battle fought by simple code generals. The daily AI battles start at launch.</p>' : ''}
-    <div class="tt-cards">${init.houses.map((h: any) => card(h, 'big')).join('')}</div>
-    <small class="tt-hint">Move across the clouds to see the field · the four generals, ${manifest.watches} watches</small></div>
+  ts.innerHTML = `<div class="tt-in"><h1>Harkara</h1>
+    <p class="tt-def"><span lang="hi">हरकारा</span><em>noun</em> the king’s runner: the messenger who carried the court’s letters across the empire, through any danger.</p>
+    <p>Four AI generals fight for three river crossings, and none of them can see the field. Every order is carried by a rider who can be caught, shot or lost, and every captured letter can be read.</p>
+    <div class="tt-btns"><button data-a="rules">The rules</button><button data-a="start" class="tt-go">Watch today’s battle</button><button data-a="ladder">War Council</button></div>
+    ${init.houses.every((h: any) => h.model === 'scripted') ? '<p class="tt-note">A rehearsal battle fought by simple code generals. The daily AI battles start at launch.</p>' : ''}</div>
+    <div class="shrine3" aria-hidden="true"><div class="slot"></div></div>
+    <nav class="tt-corners"><button data-a="rules">[ About ]</button><button data-a="sound">[ Sound ]</button><a href="https://github.com/Yasharma117/harkara" target="_blank" rel="noopener">[ Source ]</a></nav>
     <div class="tt-rules" hidden><h2>The rules</h2><ol>
-    <li><b>Win</b> by holding two of the three fords when the last watch ends, or by taking an enemy camp’s standard. A ford belongs to the house with the most soldiers at it. If nobody holds two, points decide: 100 per ford, plus every soldier still standing.</li>
-    <li><b>Fog of war.</b> A general only knows what riders have brought it, and every report is already old.</li>
-    <li><b>Orders ride.</b> Each order is a rider on the road. Foot and horse can catch riders, archers shoot them, mist loses them.</li>
-    <li><b>Ciphers.</b> A plain letter is read at once by whoever catches it. A ciphered one leaves later but is decoded slowly, letter by letter.</li>
-    <li><b>Tricks.</b> Decoys meant to be caught, two riders by two roads, smoke signals everyone sees, and truce letters between houses.</li>
-    <li><b>You</b> can predict the winner, read every letter in the Mailbag, and write a doctrine for tomorrow’s ladder.</li></ol><button data-a="back">Back</button></div>`
+    <li><b>To win,</b> hold two of the three river crossings when the battle ends. Whoever has the most soldiers on a crossing holds it. If nobody holds two, the most points wins: 100 for each crossing held, 1 for each soldier still standing.</li>
+    <li><b>The generals are blind.</b> They only know what their riders tell them, and the news is always late.</li>
+    <li><b>Every order is a rider.</b> Riders can be caught, shot, or lost in the mist.</li>
+    <li><b>Caught letters get read.</b> Plain letters at once. Coded letters slowly, a few letters at a time.</li>
+    <li><b>Tricks:</b> fake letters meant to be caught, two riders on two roads, smoke signals, truces.</li>
+    <li><b>You</b> back a general before watch 10 by clicking their card, read every letter in the Mailbag, and in the <b>War Council</b> hand a general three tactics for tonight’s battle.</li></ol><button data-a="back">Back</button></div>`
   $('stage').append(ts); clouds(ts)
   ts.onclick = e => {
     const a = (e.target as HTMLElement).dataset.a
     if (a === 'rules') { ts.querySelector<HTMLElement>('.tt-rules')!.hidden = false; ts.querySelector<HTMLElement>('.tt-in')!.hidden = true }
     if (a === 'back') { ts.querySelector<HTMLElement>('.tt-rules')!.hidden = true; ts.querySelector<HTMLElement>('.tt-in')!.hidden = false }
     if (a === 'ladder') lad.open()
-    if (a === 'start') { ts.classList.add('out'); setTimeout(() => ts.remove(), 500); setPlaying(true) }
+    if (a === 'sound') vo?.button.click()
+    if (a === 'start') { ts.classList.add('out'); setTimeout(() => ts.remove(), 460); setPlaying(true) }
   }
 }
 vo = await voice(id, init.houses, COLOR, h => A(`portrait-${h}`), $('stage'), (h: any) => card(h, 'big'))
@@ -122,6 +135,7 @@ $('ladder-open').before(vo.button)
 const sfx = soundscape(); sfx.set(vo.on); vo.onToggle(v => sfx.set(v))
 if (params.get('ladder') !== null || location.hash === '#ladder') lad.open()
 holoTilt()
+holo3d(Object.fromEntries(init.houses.map((h: any) => [h.id, h.name])), COLOR, Object.fromEntries(init.houses.map((h: any) => [h.id, h.line]))).catch(e => console.error('holo cards', e)) // the generals' cards: real 3D, reacting on cues
 $('houses').innerHTML = init.houses.map((h: any) => card(h, 'mini')).join('')
 
 // ---- streaming load: playback starts after watch 1
@@ -237,7 +251,7 @@ function draw() {
   if (beliefOf) {
     const bel = watches.findLast(w => w.start <= t)!.beliefs[beliefOf]
     squadInfo.forEach((s, i) => { const bb = bel[s.id]; if (bb && !(pos[i].flags & 2)) ghosts.push({ house: s.house, type: s.type, x: bb[0], y: bb[1], tx: pos[i].x, ty: pos[i].y, age: bb[2] }) })
-    $('belief-err').textContent = `${beliefOf} belief error: ${Math.round(ghosts.reduce((a, g) => a + Math.hypot(g.x - g.tx, g.y - g.ty), 0) / ghosts.length)} paces from the truth on average`
+    $('belief-err').textContent = `${beliefOf[0].toUpperCase() + beliefOf.slice(1)}'s guesses are off by about ${Math.round(ghosts.reduce((a, g) => a + Math.hypot(g.x - g.tx, g.y - g.ty), 0) / ghosts.length)} paces`
   } else $('belief-err').textContent = ''
   if (view === 'diorama' && dio) {
     const cbm = new Map(b.c.map(c => [c[0], c]))
@@ -330,7 +344,7 @@ function context(at: { x: number; y: number }, pos: { x: number; y: number; flag
 let heroAt = -1
 function hero() {
   const i = Math.floor(performance.now() / 7000) % HOUSES.length, n = nodes.get(`${HOUSES[i]}-camp`)
-  if (i !== heroAt) { heroAt = i; document.querySelectorAll<HTMLElement>('#title .holo').forEach(c => c.classList.toggle('lit', c.dataset.h === HOUSES[i])) }
+  if (i !== heroAt) { heroAt = i; document.querySelectorAll<HTMLElement>('#title .holo').forEach(c => c.classList.toggle('lit', c.dataset.h === HOUSES[i])); emote(HOUSES[i], 'hello') }
   return { x: n.x, y: n.y + (n.y > 500 ? -40 : 40), from: 0, until: 1e9, r: 360, pin: true }
 }
 // never frame empty ground: a shot settles halfway onto the soldiers around its target; with nobody there and no landmark, stay wide
@@ -450,7 +464,7 @@ function feed() {
   }
   for (const g of groups.values()) out[g.at] = g.n > 1 ? `<div class="item big" style="--c:#c0392b">${W(g.e)} ${hb(String(g.e.by).split('-')[0])} has caught <b>${g.n} riders</b> from ${[...g.from].map(hb).join(' and ')}. Those orders never arrived.</div>` : line(g.e)!
   if (!out.length && !allFeed) out.push('<p class="feed-empty">No big moments yet. Interceptions, broken ciphers, truces and smoke signals will appear here. <b>All dispatches</b> shows every order and every general’s thinking.</p>')
-  if (tab === 'feed') $('feed').innerHTML = out.join('')
+  if (tab === 'feed') { $('feed').innerHTML = out.join(''); const top = allFeed + (out[0] ?? ''); if (playing && feedTop[0] === top[0] && top !== feedTop) $('feed').firstElementChild?.classList.add('in'); feedTop = top } // only the newest line slides in, and only during play (not on scrub or tab switch)
   else mailbag()
   predict()
 }
@@ -466,16 +480,23 @@ function predict() {
   let streak = 0
   for (const p of done) { if (!p.right) break; streak++ }
   const cap = (h: string) => h[0].toUpperCase() + h.slice(1)
-  $('predict').innerHTML = !mine
-    ? t < 10 * TPW ? `<b>Who wins?</b> <small>Pick any time before watch 10.</small><br>${HOUSES.map(h => `<button data-h="${h}">${cap(h)}</button>`).join('')}` : '<small>Predictions closed after watch 10.</small>'
-    : mine.right === undefined ? `Your pick: <b>${cap(mine.pick)}</b>`
-    : `You picked <b>${cap(mine.pick)}</b>: ${mine.right ? 'right' : 'wrong'}. Streak: <b>${streak}</b>`
+  // backing a general is clicking their card: any card, anywhere, while picks are open
+  const open = !mine && t < 10 * TPW
+  document.body.classList.toggle('can-pick', open)
+  document.querySelectorAll<HTMLElement>('.holo').forEach(c => c.classList.toggle('mine', c.dataset.h === mine?.pick))
+  $('predict').innerHTML = open ? `<b>Who wins?</b> Click a general's card to back them. <small>Open until watch 10.</small>`
+    : !mine ? '<small>Picks closed at watch 10.</small>'
+    : mine.right === undefined ? `You backed <b>${cap(mine.pick)}</b>.`
+    : `You backed <b>${cap(mine.pick)}</b>: ${mine.right ? 'right' : 'wrong'}. Streak <b>${streak}</b>`
 }
 if (!picks[id] && t === 0) setPlaying(false) // hold the start so there's time to pick; Play skips it
-$('predict').onclick = e => {
-  const h = (e.target as HTMLElement).dataset.h
-  if (h && t < 10 * TPW) { picks[id] = { pick: h }; savePicks(); predict(); if (t < 30) setPlaying(true) }
-}
+document.addEventListener('click', e => {
+  const c = (e.target as Element).closest?.<HTMLElement>('.holo')
+  if (!c?.dataset.h || !document.body.classList.contains('can-pick')) return
+  picks[id] = { pick: c.dataset.h }; savePicks(); predict()
+  if (c.closest('#title')) document.querySelector<HTMLElement>('#title [data-a=start]')?.click() // backing from the title starts the battle
+  else if (t < 30) setPlaying(true)
+})
 
 // ---- mailbag: every letter sent so far, its fate as of now (no spoilers), what the captor has decoded
 const FATE: Record<string, [string, string]> = { delivered: ['delivered', '#4e7a5a'], caught: ['caught', '#c0392b'], killed: ['rider shot', '#c0392b'], lost: ['lost', '#888'] }
@@ -545,7 +566,7 @@ function dispatchCard(lid: string, captor: string) {
 type Pos = { x: number; y: number; flags: number; str: number }
 function fordAt(f: string, pos: Pos[]) {
   const n = nodes.get(f), by = HOUSES.map(h => [h, pos.reduce((a, p, i) => a + (squadInfo[i].house === h && !(p.flags & 3) && Math.hypot(p.x - n.x, p.y - n.y) < 50 ? p.str : 0), 0)] as [string, number]).sort((a, b) => b[1] - a[1])
-  return { name: n.name.replace(' FORD', '').toLowerCase(), h: by[0][1] > 0 && by[0][1] > by[1][1] ? by[0][0] : null as string | null, fight: by[1][1] > 0 }
+  return { name: n.name.replace(' CROSSING', '').toLowerCase(), h: by[0][1] > 0 && by[0][1] > by[1][1] ? by[0][0] : null as string | null, fight: by[1][1] > 0 }
 }
 // the live score, counted as the end counts it: 100 per ford held, plus every surviving soldier
 const scoreAt = (pos: Pos[], held: { h: string | null }[]) => Object.fromEntries(HOUSES.map(h => [h, held.filter(f => f.h === h).length * 100 + Math.round(pos.reduce((a, p, i) => a + (squadInfo[i].house === h && !(p.flags & 2) ? p.str : 0), 0))]))
@@ -598,7 +619,7 @@ const fordNote = document.createElement('div'); fordNote.id = 'fordnote'; $('sta
 function fordStrip(pos: { x: number; y: number; flags: number; str: number }[]) {
   const over = end && events.some(e => e.type === 'end' && e.t <= t)
   const held = init.map.fords.map((f: string) => {
-    if (over) { const h = end.fords[f]; return { name: nodes.get(f).name.replace(' FORD', '').toLowerCase(), h, fight: false } }
+    if (over) { const h = end.fords[f]; return { name: nodes.get(f).name.replace(' CROSSING', '').toLowerCase(), h, fight: false } }
     return fordAt(f, pos)
   })
   const two = HOUSES.find(h => held.filter((f: any) => f.h === h).length >= 2)
@@ -625,7 +646,7 @@ function fordStrip(pos: { x: number; y: number; flags: number; str: number }[]) 
 // ---- the ending: who won, why, and what each general's mail cost it
 const cap = (h: string) => h[0].toUpperCase() + h.slice(1)
 const endCard = document.createElement('div'); endCard.id = 'endcard'; endCard.hidden = true; $('stage').append(endCard)
-endCard.onclick = e => { const a = (e.target as HTMLElement).dataset.a; if (a === 'again') { t = 0; endShown = false; setPlaying(true) } if (a === 'next') { location.hash = index[(index.findIndex(b => b.id === id) + 1) % index.length].id; location.reload() } endCard.hidden = true }
+endCard.onclick = e => { const a = (e.target as HTMLElement).dataset.a; if (!a) return; if (a === 'again') { t = 0; endShown = false; setPlaying(true) } if (a === 'next') { location.hash = index[(index.findIndex(b => b.id === id) + 1) % index.length].id; location.reload() } endCard.hidden = true }
 let endShown = false
 function ending() {
   const fin = events.find(e => e.type === 'end')
@@ -640,16 +661,17 @@ function ending() {
     : /standard/i.test(fin.reason) ? fin.reason + '.'
     : `Nobody held two fords at the last watch, so the battle went to points: 100 for each ford held, plus every surviving soldier.`
   const rows = HOUSES.slice().sort((a, b) => end.scores[b] - end.scores[a])
-  endCard.innerHTML = `<div class="ec-in"><div class="ec-card">${card(init.houses.find((h: any) => h.id === fin.winner), 'big').replace('class="holo big"', 'class="holo big lit"')}</div><small>Watch ${manifest.watches} · the battle is over</small>
+  endCard.innerHTML = `<div class="ec-in"><div class="ec-card">${card(init.houses.find((h: any) => h.id === fin.winner), 'big').replace('class="holo big card3"', 'class="holo big card3 lit"')}</div><small>Watch ${manifest.watches} · the battle is over</small>
     <h2 style="color:${COLOR[fin.winner]}">${init.houses.find((h: any) => h.id === fin.winner)?.name ?? cap(fin.winner)} wins</h2>
     <p>${why}</p>${turning ? `<p class="ec-turn"><b>The turning point, watch ${Math.floor(turning.t / TPW) + 1}:</b> ${fordLine(turning)} That put ${cap(turning.lead1)} ahead of ${cap(turning.lead0)}.${turning.order ? ` ${cap(turning.was)}'s general, who could not see the field, had ordered: <q>${turning.order}</q>` : ''}</p>` : ''}
     <div class="ec-fords">${held.map(([f, h]) => `<span style="--c:${h ? COLOR[h] : '#8a7d66'}"><i></i>${fordName(f)}: <b>${h ? cap(h) : 'nobody'}</b></span>`).join('')}</div>
     <table><tr><th></th><th>Score</th><th>Riders lost</th><th>Letters taken</th><th>Ciphers broken</th></tr>
     ${rows.map(h => `<tr><td><b style="color:${COLOR[h]}">${cap(h)}</b></td><td>${end.scores[h]}</td><td>${per(h, 'caught', 'house') + per(h, 'killed', 'house')}</td><td>${per(h, 'caught', 'by')}</td><td>${new Set(events.filter(e => e.type === 'decode' && e.readable && e.house === h).map(e => e.letter)).size}</td></tr>`).join('')}</table>
     <p>${(() => { const w = fin.winner, lost = per(w, 'caught', 'house') + per(w, 'killed', 'house'), took = per(w, 'caught', 'by'), most = HOUSES.reduce((a, b) => (per(b, 'caught', 'by') > per(a, 'caught', 'by') ? b : a)); return `${cap(w)} kept ${end.scores[w] - Object.values(end.fords as Record<string, string | null>).filter(x => x === w).length * 100} soldiers' worth of strength alive${took ? ` and took ${took} enemy letters` : ''}, losing ${lost} riders of its own.${most !== w ? ` ${cap(most)} read the most enemy mail but could not turn it into ground.` : ''}` })()}</p>
-    <p class="ec-btns"><button data-a="again">Watch again</button>${index.length > 1 ? '<button data-a="next">Next battle</button>' : ''}</p>
-    <p class="ec-hint">Open the Mailbag to read every letter, or scrub back to any moment.</p></div>`
+    <p class="ec-btns"><button data-a="close">See the battlefield</button><button data-a="again">Watch again</button>${index.length > 1 ? '<button data-a="next">Next battle</button>' : ''}</p>
+    <p class="ec-hint">Read every letter in the Mailbag, or drag the timeline back to any moment.</p></div>`
   endCard.hidden = false
+  setTimeout(() => emote(fin.winner, 'win'), 500) // the winner cheers once the card has risen
 }
 
 // ---- general cards: a card pulses when its general acts (sends, catches, decodes, makes a truce)
@@ -679,10 +701,10 @@ function pulseCards() {
     for (const h of e.type === 'truce' ? [e.a, e.b] : [who]) {
       const el = document.querySelector<HTMLElement>(`.house[data-h="${h}"]`)
       if (!el) continue
-      el.classList.remove('act'); void el.offsetWidth; el.classList.add('act', ...(e.type === 'caught' || e.type === 'decode' || e.type === 'truce' ? ['big'] : []))
+      emote(h, e.type); el.classList.remove('act'); void el.offsetWidth; el.classList.add('act', ...(e.type === 'caught' || e.type === 'decode' || e.type === 'truce' ? ['big'] : []))
       const why = { caught: 'caught a rider', killed: 'shot a rider', decode: 'broke a cipher', truce: 'signed a truce', smoke: 'lit a smoke signal' }[e.type as string]
       if (why && !(e.type === 'decode' && !e.readable)) { let w = el.querySelector<HTMLElement>('.why'); if (!w) { w = document.createElement('span'); w.className = 'why'; el.append(w) } w.textContent = why; w.classList.add('on'); clearTimeout((w as any)._t); (w as any)._t = setTimeout(() => w!.classList.remove('on'), 3500) }
-      setTimeout(() => el.classList.remove('act', 'big'), 1400)
+      const big = el.classList.contains('big'); setTimeout(() => el.classList.remove('act', 'big'), big ? 1800 : 1400)
     }
   }
   pulsed = top

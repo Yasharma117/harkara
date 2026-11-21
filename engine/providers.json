@@ -1,31 +1,95 @@
 {
-  "_note": "Free tiers change without notice. Edit here, not in code. `npm run check` pings every model below. Ids checked against each provider's public model list on 2026-11-01.",
+  "_note": "Free tiers change without notice. Edit here, not in code. `npm run check` pings every model below. Ids checked against each provider's public model list on 2026-11-22.",
   "providers": {
-    "groq": { "base": "https://api.groq.com/openai/v1", "key": "GROQ_API_KEY", "rpm": 30, "tpm": 8000, "json": true },
-    "nim": { "base": "https://integrate.api.nvidia.com/v1", "key": "NVIDIA_API_KEY", "rpm": 40, "tpm": 0, "json": true },
-    "openrouter": { "base": "https://openrouter.ai/api/v1", "key": "OPENROUTER_API_KEY", "rpm": 16, "tpm": 0, "json": false },
-    "local": { "base": "http://127.0.0.1:8080/v1", "key": "", "rpm": 0, "tpm": 0, "json": true }
+    "groq": {
+      "base": "https://api.groq.com/openai/v1",
+      "key": "GROQ_API_KEY",
+      "rpm": 30,
+      "tpm": 8000,
+      "json": true
+    },
+    "nim": {
+      "base": "https://integrate.api.nvidia.com/v1",
+      "key": "NVIDIA_API_KEY",
+      "rpm": 40,
+      "tpm": 0,
+      "json": true
+    },
+    "openrouter": {
+      "base": "https://openrouter.ai/api/v1",
+      "key": "OPENROUTER_API_KEY",
+      "rpm": 16,
+      "tpm": 0,
+      "json": false
+    },
+    "local": {
+      "base": "http://127.0.0.1:8080/v1",
+      "key": "",
+      "rpm": 0,
+      "tpm": 0,
+      "json": true
+    }
   },
   "houses": {
     "rhino": [
-      { "provider": "groq", "model": "openai/gpt-oss-120b" },
-      { "provider": "nim", "model": "openai/gpt-oss-20b" },
-      { "provider": "local", "model": "local" }
+      {
+        "provider": "groq",
+        "model": "openai/gpt-oss-120b"
+      },
+      {
+        "provider": "groq",
+        "model": "openai/gpt-oss-20b"
+      },
+      {
+        "provider": "local",
+        "model": "local"
+      }
     ],
     "kite": [
-      { "provider": "groq", "model": "qwen/qwen3.8-27b" },
-      { "provider": "groq", "model": "qwen/qwen3-32b" },
-      { "provider": "local", "model": "local" }
+      {
+        "provider": "groq",
+        "model": "qwen/qwen3.8-27b"
+      },
+      {
+        "provider": "nim",
+        "model": "moonshotai/kimi-k3.1-pro"
+      },
+      {
+        "provider": "local",
+        "model": "local"
+      }
     ],
     "orchid": [
-      { "provider": "nim", "model": "nvidia/nemotron-3-super-120b-a12b" },
-      { "provider": "nim", "model": "nvidia/llama-3.1-nemotron-70b-instruct" },
-      { "provider": "local", "model": "local" }
+      {
+        "provider": "nim",
+        "model": "nvidia/nemotron-3-ultra-550b-a55b"
+      },
+      {
+        "provider": "nim",
+        "model": "nvidia/nemotron-3.5-lightning-30b-a3b"
+      },
+      {
+        "provider": "local",
+        "model": "local"
+      }
     ],
     "tiger": [
-      { "provider": "openrouter", "model": "google/gemma-4-31b-it:free" },
-      { "provider": "nim", "model": "google/gemma-4-31b-it" },
-      { "provider": "local", "model": "local" }
+      {
+        "provider": "openrouter",
+        "model": "google/gemma-4-31b-it:free"
+      },
+      {
+        "provider": "nim",
+        "model": "google/gemma-4-31b-it"
+      },
+      {
+        "provider": "nim",
+        "model": "mistralai/mistral-large-4-1t-a52b"
+      },
+      {
+        "provider": "local",
+        "model": "local"
+      }
     ]
   }
 }

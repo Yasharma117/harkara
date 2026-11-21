@@ -1,5 +1,6 @@
 // Voice and the opening scene. Clips are pre-generated per replay (tools/voice.ts → replay/<id>/audio.json);
 // without them the opening still plays as captions and the battle stays silent.
+import { emote } from './holo3d.ts'
 const KEY = 'harkara-sound'
 type House = { id: string; name: string; line: string }
 
@@ -22,7 +23,7 @@ export async function voice(id: string, houses: House[], COLOR: Record<string, s
   ov.hidden = true
   const m = id.match(/^(daily|ladder)-(\d{4}-\d{2}-\d{2})(?:-(\d+))?$/)
   const title = m ? `${new Date(m[2] + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}${m[1] === 'ladder' ? ` · ladder battle ${m[3]}` : ''}` : /^grey-(\d+)$/.test(id) ? `Rehearsal battle ${id.split('-')[1]}` : id.replace(/-/g, ' ')
-  ov.innerHTML = `<div class="op-title"><small>${m?.[1] === 'ladder' ? 'The Doctrine Ladder' : 'Today on the river'}</small><b>${title}</b></div><div class="op-cards">${houses.map(card).join('')}</div><button class="op-skip">Skip</button>`
+  ov.innerHTML = `<div class="op-title"><small>${m?.[1] === 'ladder' ? 'From the War Council' : 'Today on the river'}</small><b>${title}</b></div><div class="op-cards">${houses.map(card).join('')}</div><button class="op-skip">Skip</button>`
   stage.append(ov)
   let skip = () => {}
   ov.querySelector<HTMLButtonElement>('.op-skip')!.onclick = () => skip()
@@ -33,13 +34,13 @@ export async function voice(id: string, houses: House[], COLOR: Record<string, s
     const skipped$ = new Promise<void>(r => (skip = () => { skipped = true; speaking?.pause(); r() }))
     for (const h of houses) {
       if (skipped) break
-      ov.querySelectorAll<HTMLElement>('.holo').forEach(f => f.classList.toggle('now', f.dataset.h === h.id))
-      // a brisk roll-call: each general's card for a moment (their words are on the card); the battle is the show
-      const done = new Promise<void>(r => setTimeout(r, 1500))
+      ov.querySelectorAll<HTMLElement>('.holo').forEach(f => f.classList.toggle('now', f.dataset.h === h.id)); emote(h.id, 'hello')
+      // the roll-call is the cards' moment: each general comes forward, large, in turn
+      const done = new Promise<void>(r => setTimeout(r, 2600))
       await Promise.race([done, skipped$])
     }
     ov.classList.add('out')
-    await new Promise(r => setTimeout(r, 400))
+    await new Promise(r => setTimeout(r, 340))
     ov.hidden = true; ov.classList.remove('out'); busy = false
   }
 

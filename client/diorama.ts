@@ -340,6 +340,17 @@ export async function createDiorama(host: HTMLElement, init: any) {
     const hit = ray.intersectObject(units.harkara.mesh)[0]
     if (hit?.instanceId != null && riderIds[hit.instanceId]) follow = { id: riderIds[hit.instanceId], seen: true, goneAt: 0 }
   })
+  // the cursor says what the ground does: a hand to drag the view, a pointer over a rider you can follow
+  let hoverAt = 0
+  renderer.domElement.style.cursor = 'grab'
+  renderer.domElement.addEventListener('pointermove', e => {
+    if (e.buttons) { renderer.domElement.style.cursor = 'grabbing'; return }
+    const now = performance.now(); if (now - hoverAt < 80) return; hoverAt = now
+    const r = renderer.domElement.getBoundingClientRect()
+    ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera)
+    const hit = ray.intersectObject(units.harkara.mesh)[0]
+    renderer.domElement.style.cursor = hit?.instanceId != null && riderIds[hit.instanceId] ? 'pointer' : 'grab'
+  })
   function steer(s: Snap, dt: number) {
     const now = performance.now(), idle = now - userAt > 20000
     let label = idle ? '' : `Camera: yours (director back in ${Math.ceil((20000 - (now - userAt)) / 1000)} s)`

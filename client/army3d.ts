@@ -19,6 +19,33 @@ interface Fig { root: THREE.Object3D; mixer: THREE.AnimationMixer; acts: Map<str
 type Mode = 'walk' | 'run' | 'fight' | 'shoot' | 'idle'
 interface Unit { kind: Kind; house: string; figs: Fig[]; lx: number; ly: number; yaw: number; shotAt: number; seen: boolean; spd: number; mode: Mode; next: Mode; nextAt: number; fightAt: number }
 
+const mats = new Map<string, THREE.Material>()
+// house colour goes on the neutral, light parts of the paint (armour, cloth); skin, wood and leather keep their colours
+export function houseMaterial(m: THREE.MeshStandardMaterial, house: THREE.Color, vc = 0, band?: THREE.Box3) { // vc: 0 = textured model; else the linear brightness above which neutral paint counts as cloth
+  const key = `${m.uuid}|${house.getHexString()}|${vc}|${!!band}`
+  if (mats.has(key)) return mats.get(key)!
+  const nm = new THREE.MeshStandardNodeMaterial({ roughness: 0.75, metalness: 0.05 })
+  if (m.map) {
+    const c = texture(m.map, uv()).rgb, hi = max(c.r, max(c.g, c.b)), sat = hi.sub(min(c.r, min(c.g, c.b)))
+    const neutral = smoothstep(0.08, 0.26, sat).oneMinus().mul(smoothstep(0.12, 0.5, hi)) // edges low→high: reversed smoothstep is undefined on the GPU
+    const cloth = max(smoothstep(0.25, 0.45, c.r.sub(max(c.g, c.b))), smoothstep(0.06, 0.16, c.g.sub(max(c.r, c.b)))) // the models' red tunics and green hoods are team colour: make them the house's
+    const hc = vec3(house.r, house.g, house.b)
+    nm.colorNode = mix(mix(c, hc.mul(hi.mul(1.25).add(0.18)), neutral.mul(0.85)), hc.mul(hi.mul(1.2).add(0.05)), cloth)
+  } else if (vc) {
+    // generated models (batch 5) carry vertex colours: the off-white quilted cloth takes the house colour; skin, steel and leather stay
+    const c = vertexColor().rgb, hi = max(c.r, max(c.g, c.b)), sat = hi.sub(min(c.r, min(c.g, c.b)))
+    const cloth = smoothstep(0.07, 0.15, sat).oneMinus().mul(smoothstep(vc, vc + 0.18, hi)) // measured in linear: quilting sits at 0.2–0.5
+    const hc = vec3(house.r, house.g, house.b)
+    // elephants: hide and cloth are the same grey, so colour only the caparison's place on the body — the middle band of
+    // its height, behind the head (the model faces +Z)
+    const ny = band ? positionGeometry.y.sub(band.min.y).div(band.max.y - band.min.y) : null, nz = band ? positionGeometry.z.sub(band.min.z).div(band.max.z - band.min.z) : null
+    const where = band ? smoothstep(0.36, 0.42, ny!).mul(smoothstep(0.7, 0.76, ny!).oneMinus()).mul(smoothstep(0.7, 0.76, nz!).oneMinus()) : 1
+    nm.colorNode = mix(c, hc.mul(hi.mul(1.6).add(0.06)), cloth.mul(0.9).mul(where))
+  } else nm.color.copy(m.color)
+  mats.set(key, nm)
+  return nm
+}
+
 export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?: number) => THREE.Vector3, squads: { id: string; house: string; type: string }[], HOUSE: Record<string, THREE.Color>, camps: Record<string, { x: number; y: number }> = {}) {
   const loader = new GLTFLoader()
   // models/*.glb normally; hosts that won't serve .glb get models/pack.json (base64), made by tools/pack-models.ts
@@ -32,32 +59,7 @@ export async function army3d(scene: THREE.Scene, W: (x: number, y: number, lift?
   }
   const [horse, bolt, foot, rogue, rider, ele, courier, tent] = await Promise.all(['Horse.glb', 'arrow.glb', 'Infantry.glb', 'Archer.glb', 'Rider.glb', 'Elephant.glb', 'Courier.glb', 'Tent.glb'].map(load))
 
-  // house colour goes on the neutral, light parts of the paint (armour, cloth); skin, wood and leather keep their colours
-  const mats = new Map<string, THREE.Material>()
-  const houseMat = (m: THREE.MeshStandardMaterial, house: string, vc = 0, band?: THREE.Box3) => { // vc: 0 = textured model; else the linear brightness above which neutral paint counts as cloth
-    const key = `${m.uuid}|${house}|${vc}|${!!band}`
-    if (mats.has(key)) return mats.get(key)!
-    const nm = new THREE.MeshStandardNodeMaterial({ roughness: 0.75, metalness: 0.05 })
-    if (m.map) {
-      const c = texture(m.map, uv()).rgb, hi = max(c.r, max(c.g, c.b)), sat = hi.sub(min(c.r, min(c.g, c.b)))
-      const neutral = smoothstep(0.08, 0.26, sat).oneMinus().mul(smoothstep(0.12, 0.5, hi)) // edges low→high: reversed smoothstep is undefined on the GPU
-      const cloth = max(smoothstep(0.25, 0.45, c.r.sub(max(c.g, c.b))), smoothstep(0.06, 0.16, c.g.sub(max(c.r, c.b)))) // the models' red tunics and green hoods are team colour: make them the house's
-      const hc = vec3(HOUSE[house].r, HOUSE[house].g, HOUSE[house].b)
-      nm.colorNode = mix(mix(c, hc.mul(hi.mul(1.25).add(0.18)), neutral.mul(0.85)), hc.mul(hi.mul(1.2).add(0.05)), cloth)
-    } else if (vc) {
-      // generated models (batch 5) carry vertex colours: the off-white quilted cloth takes the house colour; skin, steel and leather stay
-      const c = vertexColor().rgb, hi = max(c.r, max(c.g, c.b)), sat = hi.sub(min(c.r, min(c.g, c.b)))
-      const cloth = smoothstep(0.07, 0.15, sat).oneMinus().mul(smoothstep(vc, vc + 0.18, hi)) // measured in linear: quilting sits at 0.2–0.5
-      const hc = vec3(HOUSE[house].r, HOUSE[house].g, HOUSE[house].b)
-      // elephants: hide and cloth are the same grey, so colour only the caparison's place on the body — the middle band of
-      // its height, behind the head (the model faces +Z)
-      const ny = band ? positionGeometry.y.sub(band.min.y).div(band.max.y - band.min.y) : null, nz = band ? positionGeometry.z.sub(band.min.z).div(band.max.z - band.min.z) : null
-      const where = band ? smoothstep(0.36, 0.42, ny!).mul(smoothstep(0.7, 0.76, ny!).oneMinus()).mul(smoothstep(0.7, 0.76, nz!).oneMinus()) : 1
-      nm.colorNode = mix(c, hc.mul(hi.mul(1.6).add(0.06)), cloth.mul(0.9).mul(where))
-    } else nm.color.copy(m.color)
-    mats.set(key, nm)
-    return nm
-  }
+  const houseMat = (m: THREE.MeshStandardMaterial, house: string, vc = 0, band?: THREE.Box3) => houseMaterial(m, HOUSE[house], vc, band)
   // normalise each model to a target height in map units, feet on the ground
   const fit = (g: THREE.Object3D, h: number) => {
     g.updateMatrixWorld(true)
