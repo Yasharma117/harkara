@@ -33,7 +33,7 @@ for d in client/public/replay/*/; do [ -f "$d/end.json" ] && git add "$d"; done
 git add client/public/replay/index.json client/public/replay/ladder.json 2>/dev/null
 if git diff --cached --quiet; then echo "nothing new to publish"
 elif git commit -qm "battle $ID" && { [ "${PUSH:-1}" = 0 ] || git push -q -f origin "battle/$ID"; }; then
-  echo "::notice::pushed battle/$ID: merge it to publish"
+  [ "${PUSH:-1}" = 0 ] && echo "::notice::rehearsal: committed battle/$ID locally, not pushed" || echo "::notice::pushed battle/$ID: merge it to publish"
   # only now mark the entries as played, so a failed push leaves them queued for tomorrow
   if [ -s data/ladder/used.json ] && [ -n "${LADDER_API:-}" ] && [ -z "${TEST_QUEUE:-}" ]; then
     curl -fsS --retry 3 --retry-all-errors -X POST -H "authorization: Bearer $LADDER_TOKEN" -H 'content-type: application/json' \
