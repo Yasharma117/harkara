@@ -3,7 +3,7 @@ import type { Ev, WatchFile } from '../engine/sim.ts'
 import { ladder } from './ladder.ts'
 import { voice } from './voice.ts'
 import { story } from './story.ts'
-import { soundscape } from './sound.ts'
+import { soundscape, type Scene } from './sound.ts'
 import { holoCard, holoTilt } from './cards.ts'
 import { holo3d, emote } from './holo3d.ts'
 import { rules, leaderboard } from './sections.ts'
@@ -42,12 +42,13 @@ let t = Number(hashT ?? params.get('t') ?? 0), playing = !hashT, speed = 4, beli
 const battleName = (b: string) => { const g = b.match(/^grey-(\d+)$/), l = b.match(/^(daily|ladder)-\d{4}-(\d{2})-(\d{2})(?:-(\d+))?$/); return g ? `Rehearsal ${g[1]}` : l ? `${l[1] === 'ladder' ? 'Council' : 'Daily'} · ${Number(l[3])}/${Number(l[2])}${l[4] ? ` · ${l[4]}` : ''}` : b }
 for (const b of index) $('battle').append(new Option(battleName(b.id), b.id, false, b.id === id)) // no winner here: it would spoil Predict
 $('battle').onchange = e => { location.hash = (e.target as HTMLSelectElement).value; location.reload() }
+const sfx = soundscape() // the score and the effects (starts on the first click)
 const playBtn = $('play')
 let busyIntro = false, autoBelief = false
 let vo: Awaited<ReturnType<typeof voice>> | null = null, opened = false, tale: ReturnType<typeof story> | null = null
 const setPlaying = (p: boolean) => {
   if (vo?.busy || busyIntro) return // the opening scene starts the battle when it ends
-  if (p && vo && !opened && t < 30) { opened = true; playBtn.textContent = 'Pause'; (async () => { while (!tale) await new Promise(r => setTimeout(r, 50)); busyIntro = true; await tale.premise(); busyIntro = false; await vo!.opening(); document.body.classList.remove('intro'); dispatchEvent(new Event('resize')) /* the side panel is back: the picture re-centres in the space beside it */; setPlaying(true) })(); return } // the opening scene runs once, before the first watch
+  if (p && vo && !opened && t < 30) { opened = true; playBtn.textContent = 'Pause'; (async () => { while (!tale) await new Promise(r => setTimeout(r, 50)); busyIntro = true; sfx.scene('eve'); await tale.premise(); busyIntro = false; await vo!.opening(); sfx.scene('battle'); document.body.classList.remove('intro'); dispatchEvent(new Event('resize')) /* the side panel is back: the picture re-centres in the space beside it */; setPlaying(true) })(); return } // the opening scene runs once, before the first watch
   playing = p; playBtn.textContent = p ? 'Pause' : 'Play'
 }
 setPlaying(playing)
@@ -132,11 +133,47 @@ if (!hashT && params.get('ladder') === null) {
 }
 vo = await voice(id, init.houses, COLOR, h => A(`portrait-${h}`), $('stage'), (h: any) => card(h, 'big'))
 $('ladder-open').before(vo.button)
-const sfx = soundscape(); sfx.set(vo.on); vo.onToggle(v => sfx.set(v))
+sfx.set(vo.on); vo.onToggle(v => sfx.set(v))
+if (hashT || params.get('ladder') !== null) sfx.scene('battle') // a shared moment skips the title
+// the War Council has its own theme; closing it returns to whatever was playing
+{ const open = lad.open; let back: Scene = 'title'; lad.open = () => { if (sfx.current !== 'council') back = sfx.current; sfx.scene('council'); open() }; $('ladder').addEventListener('close', () => sfx.scene(back)) }
 if (params.get('ladder') !== null || location.hash === '#ladder') lad.open()
+// HUD: hide the panels and leave the picture (button or H)
+const hud = (v = document.body.classList.contains('hud-off')) => { document.body.classList.toggle('hud-off', !v); $('hud').setAttribute('aria-pressed', String(v)); dispatchEvent(new Event('resize')) }
+$('hud').onclick = () => hud()
+addEventListener('keydown', e => { if ((e.key === 'h' || e.key === 'H') && !(e.target as Element).closest?.('input, textarea, select') && !e.metaKey && !e.ctrlKey) hud() })
+// the watch card: a beat at each new watch while the battle plays
+const watchCard = $('watchcard'); let cardWatch = 0
+function watchBeat() {
+  const w = Math.min(manifest.watches, Math.floor(t / TPW) + 1)
+  if (w === cardWatch) return
+  const show = playing && w > cardWatch && !document.body.classList.contains('intro'); cardWatch = w
+  if (!show) return
+  watchCard.innerHTML = `<b>WATCH ${w}</b><small>${w === manifest.watches ? 'the last watch' : w > manifest.watches - 3 ? `${manifest.watches - w + 1} watches left` : `of ${manifest.watches}`}</small>`
+  watchCard.classList.remove('on'); void watchCard.offsetWidth; watchCard.classList.add('on')
+}
 holoTilt()
 holo3d(Object.fromEntries(init.houses.map((h: any) => [h.id, h.name])), COLOR, Object.fromEntries(init.houses.map((h: any) => [h.id, h.line]))).catch(e => console.error('holo cards', e)) // the generals' cards: real 3D, reacting on cues
-$('houses').innerHTML = init.houses.map((h: any) => card(h, 'mini')).join('')
+// the generals as four chips over the map: portrait, name, what they're doing, score, strength
+$('houses').innerHTML = init.houses.map((h: any) => `<div class="house" data-h="${h.id}" tabindex="0" style="--c:${COLOR[h.id]}" title="${h.name}: ${h.model === 'scripted' ? 'rehearsal general' : h.model}"><i class="face" style="background-image:url(art/cards/${h.id}-figure.webp)"></i><b class="nm">${h.name}</b><span class="st">Waiting</span><b class="sc">0</b><i class="bar"><i></i></i></div>`).join('')
+const chipEls = Object.fromEntries(HOUSES.map(h => [h, document.querySelector<HTMLElement>(`#houses [data-h="${h}"]`)!]))
+const str0: Record<string, number> = {}, lastPos = new Map<number, { x: number; y: number }>()
+function chips(pos: Pos[], held: { h: string | null; name: string }[], score: Record<string, number>) {
+  const lead = HOUSES.reduce((a, b) => score[b] > score[a] ? b : a)
+  for (const h of HOUSES) {
+    const el = chipEls[h], mine = pos.map((p, i) => ({ p, i })).filter(({ i }) => squadInfo[i].house === h)
+    const str = mine.reduce((a, { p }) => a + (p.flags & 2 ? 0 : p.str), 0); str0[h] = Math.max(str0[h] ?? 0, str)
+    const moving = mine.some(({ p, i }) => { const q = lastPos.get(i); return q && !(p.flags & 2) && Math.hypot(p.x - q.x, p.y - q.y) > 0.4 })
+    const fords = held.filter(f => f.h === h).map(f => f.name)
+    const fighting = events.some(e => e.type === 'clash' && e.t <= t && e.t > t - 90 && `${e.a} ${e.b}`.includes(`${h}-`))
+    const st = !str ? 'Broken' : fords.length ? `Holds ${fords.join(' & ')}` : fighting ? 'Fighting' : moving ? 'Marching' : 'Waiting'
+    const set = (sel: string, v: string) => { const n = el.querySelector(sel)!; if (n.textContent !== v) n.textContent = v }
+    set('.st', st); set('.sc', String(score[h]))
+    el.querySelector<HTMLElement>('.bar i')!.style.width = `${str0[h] ? (100 * str) / str0[h] : 0}%`
+    el.classList.toggle('lead', h === lead && score[h] > 0)
+  }
+  pos.forEach((p, i) => lastPos.set(i, { x: p.x, y: p.y }))
+}
 
 // ---- streaming load: playback starts after watch 1
 ;(async () => {
@@ -359,7 +396,7 @@ function director(tt: number, pos: { x: number; y: number; flags: number }[]) {
   if (turning && tt > turning.t - 240 && tt < turning.t + 500) return (shot = { x: turning.x, y: turning.y, from: turning.t - 240, until: turning.t + 500, r: 620, pin: true })
   // hold every shot at least ~5 s of play, so the camera settles; only a bigger moment may cut in early
   // the battle opens wide, and the camera pulls back to the whole valley for a breath after every story
-  if (tt < 2 * TPW || (shot && tt >= Math.max(shot.until, shot.from + 720) && tt < Math.max(shot.until, shot.from + 720) + 260)) return null
+  if (tt < 2 * TPW || tt % TPW < 50 || (shot && tt >= Math.max(shot.until, shot.from + 720) && tt < Math.max(shot.until, shot.from + 720) + 260)) return null
   if (shot && tt >= shot.from && tt < Math.max(shot.until, shot.from + 720)) { // ~9 s at 8×: long enough to follow one army
     const urgent = events.find(e => e.t > tt && e.t < tt + 120 && (e.type === 'standard' || (e.type === 'ford' && (e.decisive || e.t > TOTAL - 3 * TPW)) && Math.hypot(e.x - shot!.x, e.y - shot!.y) > 60))
     if (!urgent) return shot
@@ -483,7 +520,7 @@ function predict() {
   // backing a general is clicking their card: any card, anywhere, while picks are open
   const open = !mine && t < 10 * TPW
   document.body.classList.toggle('can-pick', open)
-  document.querySelectorAll<HTMLElement>('.holo').forEach(c => c.classList.toggle('mine', c.dataset.h === mine?.pick))
+  document.querySelectorAll<HTMLElement>('.holo, #houses .house').forEach(c => c.classList.toggle('mine', c.dataset.h === mine?.pick))
   $('predict').innerHTML = open ? `<b>Who wins?</b> Click a general's card to back them. <small>Open until watch 10.</small>`
     : !mine ? '<small>Picks closed at watch 10.</small>'
     : mine.right === undefined ? `You backed <b>${cap(mine.pick)}</b>.`
@@ -491,7 +528,7 @@ function predict() {
 }
 if (!picks[id] && t === 0) setPlaying(false) // hold the start so there's time to pick; Play skips it
 document.addEventListener('click', e => {
-  const c = (e.target as Element).closest?.<HTMLElement>('.holo')
+  const c = (e.target as Element).closest?.<HTMLElement>('.holo, #houses .house')
   if (!c?.dataset.h || !document.body.classList.contains('can-pick') || c.closest('#opening')) return // the matchup's cards are for reading, not backing
   picks[id] = { pick: c.dataset.h }; savePicks(); predict()
   if (c.closest('#title')) document.querySelector<HTMLElement>('#title [data-a=start]')?.click() // backing from the title starts the battle
@@ -625,6 +662,7 @@ function fordStrip(pos: { x: number; y: number; flags: number; str: number }[]) 
   const two = HOUSES.find(h => held.filter((f: any) => f.h === h).length >= 2)
   const score = over ? end.scores : scoreAt(pos, held)
   const rank = HOUSES.slice().sort((a, b) => score[b] - score[a])
+  chips(pos, held, score)
   const key = JSON.stringify(held) + two + (t >= TOTAL - 3 * TPW) + rank.map(h => h + Math.round(score[h] / 5)).join()
   if (key === stripKey) return
   const fkey = JSON.stringify(held) + two
@@ -640,7 +678,7 @@ function fordStrip(pos: { x: number; y: number; flags: number; str: number }[]) 
     }
   }
   shownF = fkey; stripKey = key
-  strip.innerHTML = `${held.map((f: any) => `<span class="fd" style="--c:${f.h ? COLOR[f.h] : '#8a7d66'}"><i></i>${f.name} <b>${f.h ? f.h + (f.fight ? ' <em>contested</em>' : '') : f.fight ? 'tied' : 'empty'}</b></span>`).join('')}${two ? `<span class="fd-win" style="--c:${COLOR[two]}">${two} holds two</span>` : ''}<span class="fd-t fd-sc" title="100 for each ford held alone, plus every soldier still standing">Score <i class="fd-how">${!over && t >= TOTAL - 3 * TPW ? `<b style="color:#f2e9d8">If it ended now: ${two ? `${cap(two)} wins outright` : `${cap(rank[0])} wins on points`}</b>` : 'soldiers + 100 a ford'}</i></span>${rank.map((h, i) => `<span class="sc${i ? '' : ' lead'}" style="--c:${COLOR[h]}">${cap(h)} <b>${score[h]}</b></span>`).join('')}`
+  strip.innerHTML = `${held.map((f: any) => `<span class="fd" style="--c:${f.h ? COLOR[f.h] : '#8a7d66'}"><i></i>${f.name} <b>${f.h ? f.h + (f.fight ? ' <em>contested</em>' : '') : f.fight ? 'tied' : 'empty'}</b></span>`).join('')}${two ? `<span class="fd-win" style="--c:${COLOR[two]}">${two} holds two</span>` : ''}<span class="fd-t fd-sc" title="100 for each ford held alone, plus every soldier still standing">Score <i class="fd-how">${!over && t >= TOTAL - 3 * TPW ? `<b style="color:#f2e9d8">If it ended now: ${two ? `${cap(two)} wins outright` : `${cap(rank[0])} wins on points`}</b>` : 'soldiers + 100 a ford'}</i></span>`
 }
 
 // ---- the ending: who won, why, and what each general's mail cost it
@@ -654,6 +692,7 @@ function ending() {
   if (t < fin.t) { endShown = false; endCard.hidden = true; return }
   if (endShown) return
   endShown = true
+  sfx.scene(picks[id] && picks[id].pick !== fin.winner ? 'defeat' : 'victory') // you backed the loser: the lament
   const per = (h: string, type: string, key: string) => events.filter(e => e.type === type && (key === 'house' ? e.house === h : String(e.by ?? '').startsWith(h))).length
   const fordName = (f: string) => nodes.get(f).name.toLowerCase()
   const held = Object.entries(end.fords as Record<string, string | null>)
@@ -720,7 +759,8 @@ function loop(now: number) {
   if (playing && t >= TOTAL) setPlaying(false)
   scrub.value = String(Math.floor(t))
   $('clock').textContent = `Watch ${Math.min(manifest.watches, Math.floor(t / TPW) + 1)}/${manifest.watches}`
-  draw(); feed(); vo?.tick(events, t, playing, speed); tale?.tick(t); pulseCards(); ending(); sfx.tick(events, t, playing, TPW)
+  draw(); feed(); vo?.tick(events, t, playing, speed); tale?.tick(t); pulseCards(); ending(); watchBeat(); sfx.tick(events, t, playing)
+  if (!document.body.classList.contains('intro') && !endShown) { const late = t >= TOTAL - 3 * TPW; if (late && sfx.current === 'battle') sfx.scene('last'); else if (!late && (sfx.current === 'last' || sfx.current === 'victory' || sfx.current === 'defeat')) sfx.scene('battle') }
 }
 addEventListener('resize', resize)
 resize()
