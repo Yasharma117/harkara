@@ -169,7 +169,7 @@ function chips(pos: Pos[], held: { h: string | null; name: string }[], score: Re
     const st = !str ? 'Broken' : fords.length ? `Holds ${fords.join(' & ')}` : fighting ? 'Fighting' : moving ? 'Marching' : 'Waiting'
     const set = (sel: string, v: string) => { const n = el.querySelector(sel)!; if (n.textContent !== v) n.textContent = v }
     set('.st', st); set('.sc', String(score[h]))
-    el.querySelector<HTMLElement>('.bar i')!.style.width = `${str0[h] ? (100 * str) / str0[h] : 0}%`
+    el.querySelector<HTMLElement>('.bar i')!.style.transform = `scaleX(${str0[h] ? str / str0[h] : 0})`
     el.classList.toggle('lead', h === lead && score[h] > 0)
   }
   pos.forEach((p, i) => lastPos.set(i, { x: p.x, y: p.y }))
