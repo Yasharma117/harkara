@@ -7,6 +7,7 @@ import { soundscape, type Scene } from './sound.ts'
 import { holoCard, holoTilt } from './cards.ts'
 import { holo3d, emote } from './holo3d.ts'
 import { rules, leaderboard } from './sections.ts'
+import { tour } from './tour.ts'
 import { clouds } from './hero.ts'
 
 const COLOR: Record<string, string> = { rhino: '#34418f', kite: '#b3242f', orchid: '#b13f9a', tiger: '#e3a812' }
@@ -143,6 +144,8 @@ if (params.get('ladder') !== null || location.hash === '#ladder') lad.open()
 const hud = (v = document.body.classList.contains('hud-off')) => { document.body.classList.toggle('hud-off', !v); $('hud').setAttribute('aria-pressed', String(v)); dispatchEvent(new Event('resize')) }
 $('hud').onclick = () => hud()
 addEventListener('keydown', e => { if ((e.key === 'h' || e.key === 'H') && !(e.target as Element).closest?.('input, textarea, select') && !e.metaKey && !e.ctrlKey) hud() })
+// the first-battle tour: coach marks at the first few moments (pauses while one is open)
+const coach = tour({ pause: () => { const was = playing; if (was) setPlaying(false); return was }, resume: () => setPlaying(true) })
 // the watch card: a beat at each new watch while the battle plays
 const watchCard = $('watchcard'); let cardWatch = 0
 function watchBeat() {
@@ -760,7 +763,7 @@ function loop(now: number) {
   if (playing && t >= TOTAL) setPlaying(false)
   scrub.value = String(Math.floor(t))
   $('clock').textContent = `Watch ${Math.min(manifest.watches, Math.floor(t / TPW) + 1)}/${manifest.watches}`
-  draw(); feed(); vo?.tick(events, t, playing, speed); tale?.tick(t); pulseCards(); ending(); watchBeat(); sfx.tick(events, t, playing)
+  draw(); feed(); vo?.tick(events, t, playing, speed); tale?.tick(t); pulseCards(); ending(); watchBeat(); if (!document.body.classList.contains('intro') && playing) coach.tick(t, events, TPW); sfx.tick(events, t, playing)
   if (!document.body.classList.contains('intro') && !endShown) { const late = t >= TOTAL - 3 * TPW; if (late && sfx.current === 'battle') sfx.scene('last'); else if (!late && (sfx.current === 'last' || sfx.current === 'victory' || sfx.current === 'defeat')) sfx.scene('battle') }
 }
 addEventListener('resize', resize)
