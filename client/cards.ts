@@ -4,13 +4,16 @@
 // The pointer tilts the card and slides a lacquer sheen across it.
 type House = { id: string; name: string; line: string; model: string }
 const UNIT: Record<string, string> = { inf: 'Foot', arch: 'Bows', cav: 'Horse', ele: 'Elephants' }
+const ART: Record<string, string> = { inf: 'infantry', arch: 'archer', cav: 'cavalry', ele: 'elephant' }
+const BEATS: Record<string, string> = { inf: 'horse', arch: 'foot', cav: 'bows', ele: 'foot & horse' } // from the MOD table in engine/sim.ts
 
 export function holoCard(h: House, o: { color: string; portrait?: string; emblem?: string; squads: { house: string; type: string }[]; size?: 'big' | 'mini' }) {
   const n: Record<string, number> = {}
   for (const s of o.squads) if (s.house === h.id) n[s.type] = (n[s.type] ?? 0) + 1
   const who = h.model === 'scripted' ? 'Rehearsal general' : h.model.split(' → ')[0].split('/').pop()
   const idx = `<b>${h.id[0].toUpperCase()}</b>${o.emblem ? '<i class="ho-pip"></i>' : ''}`
-  const stats = `<div class="ho-stats">${Object.entries(UNIT).filter(([k]) => n[k]).map(([k, v]) => `<span>${'<i></i>'.repeat(n[k])}${v}</span>`).join('')}</div>`
+  // the army: each arm's own figure, how many squads, and what it beats (engine/sim.ts MOD: the bonus each arm gets)
+  const stats = `<ul class="ho-army" aria-label="Army">${Object.entries(UNIT).filter(([k]) => n[k]).map(([k, v], i) => `<li style="--i:${i}"><span class="ha-fig"><img src="art/unit-${ART[k]}.webp" alt=""><b>×${n[k]}</b></span><span class="ha-nm">${v}</span><small>beats ${BEATS[k]}</small></li>`).join('')}</ul>`
   // the big cards are real 3D cards (holo3d.ts) with their particulars underneath; the flat thumbnail shows until the first frame
   if (o.size !== 'mini') return `<div class="holo big card3" data-h="${h.id}" tabindex="0" style="--c:${o.color};--thumb:url(art/cards/${h.id}-thumb.webp)">
   <div class="slot" role="img" aria-label="${h.name}, general of House ${h.id}"></div>
