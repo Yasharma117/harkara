@@ -9,7 +9,9 @@ const still = matchMedia('(prefers-reduced-motion: reduce)').matches
 const cap = (s: string) => s[0].toUpperCase() + s.slice(1)
 const esc = (s: string) => s.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`)
 // a card thumbnail with this battle's general's name in its top plate (names change nightly, so it's live text, not baked)
-const thumb = (ctx: Ctx, h: string) => `<span class="th"><img src="art/cards/${h}-thumb.webp" alt=""><b aria-hidden="true">${esc(ctx.names[h] ?? cap(h))}</b></span>`
+const thumb = (ctx: Ctx, h: string, name = ctx.names[h] ?? cap(h)) => `<span class="th"><img src="art/cards/${h}-thumb.webp" alt=""><b aria-hidden="true">${esc(name)}</b></span>`
+// the houses' own names: the board spans many battles, and each night's AI generals name themselves differently
+const HOUSE_NAME: Record<string, string> = { rhino: 'The Grey Rhino', kite: 'Kite of the Gorge', orchid: 'Lady of Orchids', tiger: 'Old Stripe' }
 const wait = (ms: number) => new Promise(r => setTimeout(r, still ? 0 : ms))
 
 function page(cls: string, ctx: Ctx, body: string) {
@@ -156,10 +158,13 @@ const dateOf = (id: string) => id.match(/\d{4}-\d{2}-\d{2}/)?.[0]
 const label = (id: string) => { const d = dateOf(id); return d ? new Date(d + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + (id.startsWith('ladder') ? ' · council' : '') : `Rehearsal ${id.split('-').pop()}` }
 
 export async function leaderboard(ctx: Ctx) {
-  const { el } = page('pg-board', ctx, `<div class="lb"><h2>The leaderboard</h2><p class="lb-sub">…</p><div class="lb-stairs"></div><p class="lb-note"></p>
-    <section class="lb-call"><h3>Your call</h3><div class="lb-call-in"></div></section>
-    <nav class="lb-links"><button class="pg-brk" data-a="records">[ view records ]</button><button class="pg-brk" data-a="council">[ War Council ]</button></nav>
-    <div class="lb-records" hidden></div></div>`)
+  const { el } = page('pg-board', ctx, `<div class="lb">
+    <div class="lb-head"><h2>The leaderboard</h2><p class="lb-sub">…</p></div>
+    <div class="lb-podium"></div><p class="lb-note"></p>
+    <div class="lb-low">
+      <section class="lb-call"><h3>Your call</h3><div class="lb-call-in"></div></section>
+      <section class="lb-recs"><h3>Records</h3><ol class="lb-list"></ol><button class="pg-brk" data-a="council">[ War Council ]</button></section>
+    </div></div>`)
   const index: { id: string; winner: string }[] = await fetch('replay/index.json').then(r => r.json()).catch(() => [])
   const daily = index.filter(b => b.id.startsWith('daily-'))
   const pool = daily.length ? daily : index // before launch: the rehearsal and council nights
@@ -171,10 +176,17 @@ export async function leaderboard(ctx: Ctx) {
   const tally = Object.fromEntries(HOUSES.map(h => [h, { wins: 0, pts: 0 }]))
   counted.slice(-90).forEach((b, i) => { tally[b.winner] && tally[b.winner].wins++; const s = ends[i]?.scores; if (s) for (const h of HOUSES) tally[h].pts += s[h] ?? 0 })
   const rank = [...HOUSES].sort((a, b) => tally[b].wins - tally[a].wins || tally[b].pts - tally[a].pts)
-  el.querySelector('.lb-sub')!.textContent = `${daily.length ? 'Daily battles' : 'Rehearsal battles'} · ${counted.length} recorded`
-  el.querySelector('.lb-stairs')!.innerHTML = rank.map((h, i) => `<figure style="--c:${ctx.COLOR[h]};--i:${i}"><span class="lb-n">${String(i + 1).padStart(2, '0')}</span>${thumb(ctx, h)}<figcaption><b>${esc(ctx.names[h] ?? cap(h))}</b><small><span data-n="${tally[h].wins}">0</span> ${tally[h].wins === 1 ? 'win' : 'wins'} · <span data-n="${tally[h].pts}">0</span> pts</small></figcaption></figure>`).join('')
-  el.querySelector('.lb-note')!.innerHTML = `Ranked by wins, then total battle points.${today && !picks[today]?.at ? ' Today’s battle joins the board once you’ve watched it.' : ''}`
-  countUp(el.querySelector('.lb-stairs')!)
+  const n = counted.length
+  el.querySelector('.lb-sub')!.textContent = `${daily.length ? 'Daily AI battles' : 'Rehearsal battles'} · ${n} recorded`
+  // a podium: first in the middle and tallest, second left, third right, fourth beside it
+  el.querySelector('.lb-podium')!.innerHTML = [1, 0, 2, 3].map(i => { const h = rank[i]; return `<figure class="p${i + 1}" style="--c:${ctx.COLOR[h]};--i:${i}">
+      ${thumb(ctx, h, HOUSE_NAME[h])}
+      <figcaption><b>${HOUSE_NAME[h]}</b><span class="lb-w"><em data-n="${tally[h].wins}">0</em> ${tally[h].wins === 1 ? 'win' : 'wins'}</span><small><span data-n="${tally[h].pts}">0</span> pts</small><i class="lb-rate" title="won ${tally[h].wins} of ${n}"><i style="--r:${n ? tally[h].wins / n : 0}"></i></i></figcaption>
+      <span class="lb-plinth">${String(i + 1).padStart(2, '0')}</span></figure>` }).join('')
+  el.querySelector('.lb-note')!.textContent = `Ranked by wins, then total battle points.${today && !picks[today]?.at ? ' Today’s battle joins the board once you’ve watched it.' : ''}`
+  countUp(el.querySelector('.lb-podium')!)
+  const records = () => { el.querySelector('.lb-list')!.innerHTML = index.slice().reverse().map((x, i) => `<li style="--i:${Math.min(i, 12)}"><span>${label(x.id)}</span>${x.id === today && !loadPicks()[today]?.at ? '<b class="q">?</b>' : `<b style="--c:${ctx.COLOR[x.winner]}">${HOUSE_NAME[x.winner] ?? cap(x.winner)}</b>`}<a href="#${x.id}" data-id="${x.id}">Watch →</a></li>`).join('') }
+  records()
 
   // ---- your call: back today's winner; your record and streak
   const call = () => {
@@ -183,24 +195,16 @@ export async function leaderboard(ctx: Ctx) {
     let streak = 0; for (const [, x] of done) { if (!x.right) break; streak++ }
     const right = done.filter(([, x]) => x.right).length
     const head = !today ? '<p>No battle to call yet.</p>'
-      : mine?.at ? `<p>${label(today)}: you backed <b style="color:${ctx.COLOR[mine.pick]}">${cap(mine.pick)}</b>, and you were <b>${mine.right ? 'right' : 'wrong'}</b>.</p>`
-      : `<p>${mine ? 'Change your call any time before you watch.' : `Who wins ${label(today)}? Back one general, then watch.`}</p><div class="lb-pick">${HOUSES.map(h => `<button data-pick="${h}" style="--c:${ctx.COLOR[h]}" aria-pressed="${mine?.pick === h}">${thumb(ctx, h)}<span>${esc(ctx.names[h] ?? cap(h))}</span></button>`).join('')}</div>`
-    el.querySelector('.lb-call-in')!.innerHTML = `${head}<div class="lb-rec"><span><b data-n="${right}">0</b> right of <b data-n="${done.length}">0</b></span><span>Streak <b data-n="${streak}">0</b></span></div>${done.length ? `<ol class="lb-hist">${done.slice(0, 6).map(([bid, x], i) => `<li style="--i:${i}"><span>${label(bid)}</span><b style="color:${ctx.COLOR[x.pick]}">${cap(x.pick)}</b><i>${x.right ? '✓' : '✗'}</i></li>`).join('')}</ol>` : ''}`
+      : mine?.at ? `<p>${label(today)}: you backed <b style="--c:${ctx.COLOR[mine.pick]}" class="hn">${HOUSE_NAME[mine.pick]}</b>, and you were <b>${mine.right ? 'right' : 'wrong'}</b>.</p>`
+      : `<p>${mine ? 'Change your call any time before you watch.' : `Who wins <b>${label(today)}</b>? Back one general, then watch.`}</p><div class="lb-pick">${HOUSES.map(h => `<button data-pick="${h}" style="--c:${ctx.COLOR[h]}" aria-pressed="${mine?.pick === h}">${thumb(ctx, h, HOUSE_NAME[h])}<span>${HOUSE_NAME[h]}</span></button>`).join('')}</div>`
+    el.querySelector('.lb-call-in')!.innerHTML = `${head}<div class="lb-rec"><span><b data-n="${right}">0</b> right of <b data-n="${done.length}">0</b></span><span>Streak <b data-n="${streak}">0</b></span></div>${done.length ? `<ol class="lb-hist">${done.slice(0, 5).map(([bid, x], i) => `<li style="--i:${i}"><span>${label(bid)}</span><b style="--c:${ctx.COLOR[x.pick]}">${HOUSE_NAME[x.pick]}</b><i>${x.right ? '✓' : '✗'}</i></li>`).join('')}</ol>` : ''}`
     countUp(el.querySelector('.lb-rec')!)
   }
   call()
   el.addEventListener('click', e => {
-    const b = (e.target as Element).closest<HTMLElement>('[data-pick],[data-a=records]')
-    if (!b) return
-    if (b.dataset.pick && today) { const p = loadPicks(); p[today] = { pick: b.dataset.pick }; savePicks(p); call(); el.querySelector(`[data-pick=${b.dataset.pick}]`)?.classList.add('just') }
-    if (b.dataset.a === 'records') {
-      const r = el.querySelector<HTMLElement>('.lb-records')!
-      r.hidden = !r.hidden
-      if (!r.hidden && !r.innerHTML) r.innerHTML = `<ol>${index.slice().reverse().map((x, i) => `<li style="--i:${Math.min(i, 12)}"><span>${label(x.id)}</span><b style="color:${ctx.COLOR[x.winner]}">${x.id === today && !loadPicks()[today]?.at ? '?' : cap(x.winner)}</b><a href="#${x.id}" data-id="${x.id}">Watch</a></li>`).join('')}</ol>`
-    }
-  })
-  el.querySelector('.lb-records')!.addEventListener('click', e => {
-    const a = (e.target as Element).closest<HTMLAnchorElement>('a[data-id]')
+    const b = (e.target as Element).closest<HTMLElement>('[data-pick]')
+    if (b?.dataset.pick && today) { const p = loadPicks(); p[today] = { pick: b.dataset.pick }; savePicks(p); call(); el.querySelector(`[data-pick=${b.dataset.pick}]`)?.classList.add('just') }
+    const a = (e.target as Element).closest<HTMLAnchorElement>('.lb-list a[data-id]')
     if (!a) return
     e.preventDefault()
     if (a.dataset.id === ctx.current) return void el.querySelector<HTMLElement>('[data-a=watch]')!.click()
