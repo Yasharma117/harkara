@@ -5,7 +5,7 @@ type Ev = { seq: number; t: number; type: string; [k: string]: any }
 export type Scene = 'title' | 'council' | 'eve' | 'battle' | 'last' | 'victory' | 'defeat'
 const MUSIC: Record<Scene, string> = { title: 'title-overture', council: 'war-council', eve: 'eve-of-battle', battle: 'march-to-battle', last: 'last-stand', victory: 'victory', defeat: 'defeat' }
 const ONCE = new Set<Scene>(['victory', 'defeat']) // stingers play once; the rest loop
-const AMB: Partial<Record<Scene, string>> = { title: 'ember-crackle', battle: 'battle-ambience', last: 'battle-ambience' }
+const AMB: Partial<Record<Scene, string>> = { battle: 'battle-ambience', last: 'battle-ambience' }
 
 export function soundscape() {
   let ctx: AudioContext | null = null, master: GainNode, musicBus: GainNode, sfxBus: GainNode, on = true
@@ -42,7 +42,7 @@ export function soundscape() {
     src.connect(g).connect(musicBus); src.start(now)
     playing = { src, g, scene: s }
   }
-  // ---- a bed under the music: the shrine's lamp on the title, the battlefield while a battle plays
+  // ---- a bed under the music: the battlefield while a battle plays
   async function setAmbience(n: string) {
     wantAmbience = n
     if (!ctx || ambience?.n === n) return

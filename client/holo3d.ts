@@ -17,7 +17,6 @@ const WIN = [0.1146, 1 - 0.6918, 0.8854, 1 - 0.158] // the frame's arch window, 
 const NAME = [0.19, 1 - 0.1, 0.81, 1 - 0.028], MOTTO = [0.12, 1 - 0.884, 0.88, 1 - 0.772] // its blank bronze plates
 const CW = 2, CH = 3, T = 0.14 // card in its own units, and its thickness
 const CAM_D = 32, FOV = 20 // a long lens: depth without distortion
-const SHRINE_LAMP = { y: -0.07, z: 0.12 } // the lamp flames, in card units from the model's centre
 const still = matchMedia('(prefers-reduced-motion: reduce)').matches
 
 type Card = {
@@ -192,33 +191,6 @@ export async function holo3d(names: Record<string, string>, colors: Record<strin
     cards.set(h, { h, group, pivot, edge, shadow, halo, dust, u, rot: new THREE.Vector2(), vel: new THREE.Vector2(), spin: 0, spinV: 0, spinTo: 0, hover: 0, flare: 0, bump: 0, seen: false })
   }))
 
-  // ---- the messenger's shrine on the title (.shrine3 > .slot): the model, its three lamp flames and the light they cast
-  const shrine = await (async () => {
-    const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js')
-    const model = (await new GLTFLoader().loadAsync('models/shrine.glb')).scene
-    const box = new THREE.Box3().setFromObject(model), size = box.getSize(new THREE.Vector3())
-    model.scale.setScalar(CH / size.y); model.position.set(-(box.min.x + box.max.x) / 2 * CH / size.y, -CH / 2, -(box.min.z + box.max.z) / 2 * CH / size.y)
-    const pivot = new THREE.Group(); pivot.add(model)
-    const group = new THREE.Group(); group.add(pivot); group.visible = false
-    const glow = radial('#fff2c0', '#ffb04000')
-    // the lamp sits in the niche, a little above half height (SHRINE_LAMP, measured on the model)
-    const flames = [-0.15, 0, 0.15].map(x => {
-      const f = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }))
-      f.position.set(x, SHRINE_LAMP.y, SHRINE_LAMP.z); pivot.add(f); return f
-    })
-    const light = new THREE.PointLight('#ffb060', 8, 6, 2); light.position.set(0, SHRINE_LAMP.y + 0.1, SHRINE_LAMP.z + 0.3); pivot.add(light)
-    const embers: { s: THREE.Sprite; v: number; ph: number }[] = []
-    for (let i = 0; i < 26; i++) {
-      const t = dustTex.clone(); t.repeat.set(0.25, 0.25); t.offset.set((i % 4) * 0.25, Math.floor((i / 4) % 4) * 0.25)
-      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }))
-      sp.position.set((Math.random() - 0.5) * 1.2, SHRINE_LAMP.y + Math.random() * 2.4, SHRINE_LAMP.z + (Math.random() - 0.3) * 0.8); sp.scale.setScalar(0.06 + Math.random() * 0.14)
-      group.add(sp); embers.push({ s: sp, v: 0.2 + Math.random() * 0.4, ph: Math.random() * 6.28 })
-    }
-    scene.add(group)
-    return { group, pivot, flames, light, embers, mats: [] as THREE.Material[], seen: false, turn: 0 }
-  })().catch(e => { console.error('shrine', e); return null })
-  shrine?.group.traverse(o => { if ((o as THREE.Mesh).isMesh) { const m = (o as THREE.Mesh).material as THREE.Material; m.transparent = true; shrine.mats.push(m) } })
-
   // ---- each general's relic (client/public/models/relic-<house>.glb): it stands at the front corner of the big card,
   // upright while the card tilts, turning slowly, and hops when the general acts. Loaded after the cards; optional.
   {
@@ -327,32 +299,6 @@ export async function holo3d(names: Record<string, string>, colors: Record<strin
         if (!still) { d.s.position.y += d.v * dt; d.s.position.x += Math.sin(t * 0.6 + d.ph) * 0.003 }
         if (d.s.position.y > 2.6) d.s.position.y = -2.6
         d.s.material.opacity = (0.25 + 0.55 * (0.5 + 0.5 * Math.sin(t * 1.7 + d.ph)) + C.flare * 0.4) * o * (big ? 1 : 0.5)
-      }
-    }
-    const sEl = shrine && document.querySelector<HTMLElement>('.shrine3 > .slot')
-    if (shrine) shrine.group.visible = false
-    if (shrine && sEl?.offsetParent) {
-      const r = sEl.getBoundingClientRect(), o = opacityOf(sEl)
-      if (r.width > 4 && o > 0.01) {
-        any = true; shrine.group.visible = true
-        const scale = (r.height * k) / CH, tx = (r.left + r.width / 2 - innerWidth / 2) * k, ty = -(r.top + r.height / 2 - innerHeight / 2) * k
-        if (!shrine.seen) { shrine.group.position.set(tx, ty, 0); shrine.group.scale.setScalar(scale); shrine.seen = true }
-        const f = 1 - Math.exp(-real * 9)
-        shrine.group.position.x += (tx - shrine.group.position.x) * f; shrine.group.position.y += (ty - shrine.group.position.y) * f
-        shrine.group.scale.setScalar(shrine.group.scale.x + (scale - shrine.group.scale.x) * f)
-        // it turns a little toward the pointer, and breathes when left alone
-        const px = THREE.MathUtils.clamp((ptr.x - (r.left + r.width / 2)) / innerWidth * 2, -1, 1)
-        const goal = still ? -0.35 : -0.35 + px * 0.45 + Math.sin(t * 0.21) * 0.08
-        shrine.turn += (goal - shrine.turn) * (1 - Math.exp(-dt * 2.5)); shrine.pivot.rotation.set(0.06, shrine.turn, 0)
-        const fl = still ? 1 : 0.85 + 0.1 * Math.sin(t * 13) + 0.07 * Math.sin(t * 7.3 + 1) + 0.05 * Math.sin(t * 23.1)
-        shrine.flames.forEach((s, j) => { const w = fl * (1 + 0.08 * Math.sin(t * 17 + j * 2)); s.scale.set(0.09 * w, 0.17 * w, 1); (s.material as THREE.SpriteMaterial).opacity = o })
-        shrine.light.intensity = 8 * fl * o
-        for (const m of shrine.mats) m.opacity = o
-        for (const e of shrine.embers) {
-          if (!still) { e.s.position.y += e.v * dt; e.s.position.x += Math.sin(t * 0.8 + e.ph) * 0.002 }
-          if (e.s.position.y > 1.7) e.s.position.y = SHRINE_LAMP.y
-          e.s.material.opacity = (0.3 + 0.6 * (0.5 + 0.5 * Math.sin(t * 2.1 + e.ph))) * o * Math.max(0, 1 - (e.s.position.y - SHRINE_LAMP.y) / 1.5)
-        }
       }
     }
     if (any || drawn) renderer.render(scene, cam) // one more frame after the last card leaves, to clear it

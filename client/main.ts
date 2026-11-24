@@ -119,7 +119,6 @@ if (!hashT && params.get('ladder') === null) {
     <p>Four AI generals fight for three river crossings, and none of them can see the field. Every order is carried by a rider who can be caught, shot or lost, and every captured letter can be read.</p>
     <div class="tt-btns"><button data-a="rules">The rules</button><button data-a="start" class="tt-go">Watch today’s battle</button><button data-a="board">Leaderboard</button></div>
     ${init.houses.every((h: any) => h.model === 'scripted') ? '<p class="tt-note">A rehearsal battle fought by simple code generals. The daily AI battles start at launch.</p>' : ''}</div>
-    <div class="shrine3" aria-hidden="true"><div class="slot"></div></div>
     <nav class="tt-corners"><button data-a="rules">[ About ]</button><button data-a="sound">[ Sound ]</button><a href="https://github.com/Yasharma117/harkara" target="_blank" rel="noopener">[ Source ]</a></nav>
 `
   $('stage').append(ts); clouds(ts)
@@ -131,6 +130,8 @@ if (!hashT && params.get('ladder') === null) {
     if (a === 'start') { ts.classList.add('out'); setTimeout(() => ts.remove(), 460); setPlaying(true) }
   }
 }
+// the loader lifts once the fonts and the 3D valley are in and a frame has drawn (any page: title or a shared moment)
+;(async () => { const t0 = performance.now(); await document.fonts?.ready; while (view === 'diorama' && !dio && performance.now() - t0 < 12000) await new Promise(r => setTimeout(r, 80)); await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); document.body.classList.add('loaded') })()
 vo = await voice(id, init.houses, COLOR, h => A(`portrait-${h}`), $('stage'), (h: any) => card(h, 'big'))
 $('ladder-open').before(vo.button)
 sfx.set(vo.on); vo.onToggle(v => sfx.set(v))
