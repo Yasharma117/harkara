@@ -8,6 +8,8 @@ const PLAN: Record<HouseId, { a: string; b: string; screen: string; method: Meth
   orchid: { a: 'F1', b: 'F2', screen: 's-ferry', method: 'cipher', persona: ['Lady of Orchids', 'Let them chase the riders I want them to catch.'] },
   tiger: { a: 'F3', b: 'F2', screen: 'south-village', method: 'double', persona: ['Old Stripe', 'Two riders, two roads. One always gets through.'] },
 }
+// each house's own name and line, used when a model general doesn't give one
+export const PERSONA = Object.fromEntries(Object.entries(PLAN).map(([h, p]) => [h, p.persona])) as Record<HouseId, [string, string]>
 const ASSIGN: Record<string, 'a' | 'b' | 'screen'> = { 'inf-1': 'a', 'ele-1': 'a', 'inf-2': 'b', 'arch-1': 'b', 'cav-1': 'screen' }
 const LETTERS: Partial<Record<HouseId, { watch: number; to: HouseId; text: string }>> = {
   rhino: { watch: 3, to: 'orchid', text: 'Truce until the ninth watch. Keep your horse off the west ford.' },

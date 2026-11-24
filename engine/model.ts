@@ -1,4 +1,5 @@
 // Model generals: one OpenAI-compatible call per watch, one JSON answer, one retry.
+import { PERSONA } from './scripted.ts'
 import { readFileSync } from 'node:fs'
 import { EDGES, HOUSES, NODES, type HouseId } from './map.ts'
 import { SMOKES, TICKS, VERBS, type Decision, type General, type GeneralView } from './sim.ts'
@@ -145,10 +146,10 @@ export function modelGeneral(h: HouseId, cfg: Config = loadConfig(), env: Record
       try {
         const r = await chat([{ role: 'system', content: rules(h, doctrine) }, { role: 'user', content: 'Before battle: answer only {"name": "<a title for yourself, max 4 words>", "line": "<one line to your army, max 120 chars>"}' }])
         const j = JSON.parse(r.text.slice(r.text.indexOf('{'), r.text.lastIndexOf('}') + 1))
-        return { name: clean(j.name, 40), line: clean(j.line, 140) }
+        return { name: clean(j.name, 40) || PERSONA[h][0], line: clean(j.line, 140) || PERSONA[h][1] } // a blank answer keeps the house's own
       } catch (e) {
         if (e instanceof ProviderDown) throw e
-        return { name: `General ${h}`, line: '' }
+        return { name: PERSONA[h][0], line: PERSONA[h][1] }
       }
     },
     async decide(v) {
