@@ -23,6 +23,7 @@ const still = matchMedia('(prefers-reduced-motion: reduce)').matches
 type Card = {
   h: string; group: THREE.Group; pivot: THREE.Group; edge: THREE.MeshStandardNodeMaterial
   shadow: THREE.Mesh; halo: THREE.Mesh; dust: { s: THREE.Sprite; v: number; ph: number }[]
+  relic?: { root: THREE.Group; mats: THREE.Material[]; turn: number }
   u: { cam: any; light: any; flare: any; fade: any }
   rot: THREE.Vector2; vel: THREE.Vector2; spin: number; spinV: number; spinTo: number
   hover: number; flare: number; bump: number; seen: boolean
@@ -218,6 +219,25 @@ export async function holo3d(names: Record<string, string>, colors: Record<strin
   })().catch(e => { console.error('shrine', e); return null })
   shrine?.group.traverse(o => { if ((o as THREE.Mesh).isMesh) { const m = (o as THREE.Mesh).material as THREE.Material; m.transparent = true; shrine.mats.push(m) } })
 
+  // ---- each general's relic (client/public/models/relic-<house>.glb): it stands at the front corner of the big card,
+  // upright while the card tilts, turning slowly, and hops when the general acts. Loaded after the cards; optional.
+  {
+    const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js')
+    const gl = new GLTFLoader()
+    await Promise.all([...cards.values()].map(async C => {
+      try {
+        const model = (await gl.loadAsync(`models/relic-${C.h}.glb`)).scene
+        const box = new THREE.Box3().setFromObject(model), size = box.getSize(new THREE.Vector3()), k = (CH * 0.52) / size.y
+        model.scale.setScalar(k); model.position.set(-(box.min.x + box.max.x) / 2 * k, -box.min.y * k, -(box.min.z + box.max.z) / 2 * k)
+        const root = new THREE.Group(); root.add(model)
+        root.position.set(CW / 2 + 0.18, -CH / 2 - 0.12, 0.7); root.visible = false
+        const mats: THREE.Material[] = []
+        model.traverse(o => { const m = (o as THREE.Mesh).material as THREE.Material | undefined; if ((o as THREE.Mesh).isMesh && m) { m.transparent = true; mats.push(m) } })
+        C.group.add(root); C.relic = { root, mats, turn: 0 }
+      } catch (e) { console.warn('relic', C.h, e) }
+    }))
+  }
+
   // ---- pointer
   const ptr = { x: -1e4, y: -1e4 }
   let drag: { h: string; x: number; y: number; spin: number; moved: boolean } | null = null, dragged = false
@@ -296,6 +316,13 @@ export async function holo3d(names: Record<string, string>, colors: Record<strin
       ;(C.shadow.material as THREE.MeshBasicMaterial).opacity = 0.75 * o
       C.shadow.position.set(0.25 - cx * 0.12 * C.hover, -0.35 - cy * 0.1 * C.hover, -1.2)
       ;(C.halo.material as THREE.MeshBasicMaterial).opacity = (0.16 + C.flare * 0.4 + C.hover * 0.06) * o
+      if (C.relic) { // only beside a big card: a small one has no room for it
+        const R = C.relic; R.root.visible = big
+        R.turn += dt * (0.35 + C.flare * 6) // turns slowly, spins up when the general acts
+        R.root.rotation.y = -0.55 + Math.sin(R.turn) * 0.45 + (still ? 0 : cx * 0.2 * C.hover)
+        R.root.position.y = -CH / 2 - 0.12 + C.bump * 0.25
+        for (const m of R.mats) m.opacity = o
+      }
       for (const d of C.dust) {
         if (!still) { d.s.position.y += d.v * dt; d.s.position.x += Math.sin(t * 0.6 + d.ph) * 0.003 }
         if (d.s.position.y > 2.6) d.s.position.y = -2.6
