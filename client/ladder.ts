@@ -14,7 +14,7 @@ export function ladder(COLOR: Record<string, string>, names: Record<string, stri
   d.innerHTML = `
     <form method="dialog" class="close"><button aria-label="Close">✕</button></form>
     <h2>War Council</h2>
-    <p class="lede">Give one general your three best tactics. Each night the council draws orders by lot, and those generals fight with them against three rivals on the same AI, so only the tactics differ. Results post the next morning.</p>
+    <p class="lede">Give one general your three best tactics. Every night the council deals each general three tactic cards at random and they fight on the same AI, so only the tactics differ. Send your own and they may be drawn in place of the deal. Results post the next morning.</p>
     <form id="ld-form">
       <h3><span>1</span> Choose a general</h3>
       <fieldset class="houses">${Object.keys(COLOR).map((h, i) => `<label style="--c:${COLOR[h]}"><input type="radio" name="house" value="${h}" ${i ? '' : 'checked'}><img src="${portrait(h)}" alt=""><span>${esc(names[h] ?? cap(h))}</span></label>`).join('')}</fieldset>
@@ -72,7 +72,7 @@ export function ladder(COLOR: Record<string, string>, names: Record<string, stri
     const el = d.querySelector('#ld-results')!
     const days: { date: string; battles: { id: string; winner: string; reason: string; entries: { house: string; by: string | null; text: string | null; score: number }[] }[] }[] = await fetch('replay/ladder.json').then(r => r.ok ? r.json() : []).catch(() => [])
     if (!days.length) { el.textContent = 'No nights yet. The first results post the morning after launch.'; return }
-    el.innerHTML = days.slice().reverse().slice(0, 7).map(day => `<section><h4>${day.date}</h4>${day.battles.map(b => `<div class="ld-battle"><div class="ld-head"><b style="color:${COLOR[b.winner]}">${cap(b.winner)}</b> won <a href="#${b.id}" data-id="${b.id}">Watch it</a></div><ol>${b.entries.map(e => `<li style="--c:${COLOR[e.house]}"><b>${cap(e.house)}</b> ${e.score} pts <small>${e.by ? (/\(test\)/.test(e.by) ? 'rehearsal' : `by ${esc(e.by)}`) : 'house default'}</small>${e.text ? `<br>${tactics(e.text)}` : ''}</li>`).join('')}</ol></div>`).join('')}</section>`).join('')
+    el.innerHTML = days.slice().reverse().slice(0, 7).map(day => `<section><h4>${day.date}</h4>${day.battles.map(b => `<div class="ld-battle"><div class="ld-head"><b style="color:${COLOR[b.winner]}">${cap(b.winner)}</b> won <a href="#${b.id}" data-id="${b.id}">Watch it</a></div><ol>${b.entries.map(e => `<li style="--c:${COLOR[e.house]}"><b>${cap(e.house)}</b> ${e.score} pts <small>${e.by ? (/\(test\)/.test(e.by) ? 'rehearsal' : `by ${esc(e.by)}`) : 'dealt by lot'}</small>${e.text ? `<br>${tactics(e.text)}` : ''}</li>`).join('')}</ol></div>`).join('')}</section>`).join('')
     el.querySelectorAll<HTMLAnchorElement>('a[data-id]').forEach(a => a.onclick = ev => { ev.preventDefault(); location.hash = a.dataset.id!; location.reload() })
   }
   sync()

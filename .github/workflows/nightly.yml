@@ -1,9 +1,9 @@
-# Every night at 02:00 IST: today's battle with the model generals, then the War Council on a local model.
-# Free on a public repo. Results go to a battle/<date> branch; merge it and Cloudflare Pages redeploys the site.
+# Every night at about 01:47 IST: today's battle with the model generals, then the War Council on a local model.
+# Free on a public repo. Results are committed to main, and Cloudflare Pages redeploys the site.
 # Secrets (Settings → Secrets and variables → Actions): LADDER_API, LADDER_TOKEN, and any of GROQ_API_KEY, NVIDIA_API_KEY, OPENROUTER_API_KEY.
 name: nightly
 on:
-  schedule: [{ cron: '30 20 * * *' }]
+  schedule: [{ cron: '17 20 * * *' }] # 01:47 IST; off the hour, when GitHub's queue is shorter
   workflow_dispatch:
     inputs:
       battles: { description: 'War Council battles tonight', default: '2' }
@@ -19,7 +19,6 @@ jobs:
       MODEL_URL: https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_0.gguf
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 } # full history: tonight's branch builds on any unmerged battle branch
       - uses: actions/setup-node@v4
         with: { node-version: 24, cache: npm }
       - run: npm ci --ignore-scripts
